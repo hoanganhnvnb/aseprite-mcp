@@ -8,6 +8,8 @@ from pathlib import Path
 
 DEFAULT_TIMEOUT = 60.0
 DEFAULT_MAX_READ_PIXELS = 65536
+# Pixels check_animation may scan for overlaps in one call (about a second of work).
+DEFAULT_MAX_SCAN_PIXELS = 16 * 1024 * 1024
 _TRUE = {"1", "true", "yes", "on"}
 
 
@@ -20,6 +22,7 @@ class Settings:
     max_procs: int
     allow_lua: bool
     max_read_pixels: int
+    max_scan_pixels: int = DEFAULT_MAX_SCAN_PIXELS
 
 
 def _flag(value: str | None) -> bool:
@@ -100,5 +103,8 @@ def load_settings(env: Mapping[str, str] = os.environ) -> Settings:
         allow_lua=_flag(env.get("ASEPRITE_MCP_ALLOW_LUA")),
         max_read_pixels=_positive_int(
             env.get("ASEPRITE_MCP_MAX_READ_PIXELS"), DEFAULT_MAX_READ_PIXELS
+        ),
+        max_scan_pixels=_positive_int(
+            env.get("ASEPRITE_MCP_MAX_SCAN_PIXELS"), DEFAULT_MAX_SCAN_PIXELS
         ),
     )

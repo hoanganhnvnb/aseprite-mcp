@@ -2,6 +2,7 @@ from typing import Annotated, Any, Literal
 
 from pydantic import Field
 
+from .. import server
 from ..ranges import FrameSpec
 from ._registry import op_tool
 from .layers import LayerRef
@@ -51,9 +52,11 @@ def check_animation(
     (a bare name matches several layers; the shallowest is used), empty_frame (no
     visible pixels), cel_off_canvas, frame_duration (under 10 ms or over 10 s).
     Ranges and overlaps look at a layer's own pixels, hidden or not; tilemap layers are
-    left out of overlap checks. ok is true when there is no error. At most 200 findings
-    are listed (truncated says so; finding_count is the total). Only `frames` are
-    checked.
+    left out of overlap checks. The overlap scan covers where the pairs' cels meet, summed
+    over pairs and frames; past ASEPRITE_MCP_MAX_SCAN_PIXELS (default 16777216) the call
+    fails before scanning, so check fewer frames or pairs. ok is true when there is no
+    error. At most 200 findings are listed (truncated says so; finding_count is the
+    total). Only `frames` are checked.
     """
     return {
         "frames": frames,
@@ -61,6 +64,7 @@ def check_animation(
         "layer_frame_ranges": layer_frame_ranges or {},
         "overlap_pairs": [list(pair) for pair in overlap_pairs or []],
         "max_findings": MAX_FINDINGS,
+        "max_scan_pixels": server.get_settings().max_scan_pixels,
     }
 
 
@@ -94,7 +98,8 @@ def repair_animation(
     layer_order puts the listed layers (all in the same group, or all top level) in that
     order, bottom first, in the stack slots they already hold; unlisted layers stay put.
     layer_frame_ranges finds layers with pixels in frames (within `frames`) outside their
-    range; out_of_range decides what happens to them: "report" only lists them and
+    range (it may name a layer ensure_layers creates, by path or bare name);
+    out_of_range decides what happens to them: "report" only lists them and
     changes nothing, "hide" makes each such layer invisible (its cels stay), "delete"
     deletes the out-of-range cels. Locked layers are refused for hide, delete and moves.
     changed is false when nothing needed fixing; the file is then not rewritten. When

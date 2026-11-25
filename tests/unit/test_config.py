@@ -23,6 +23,7 @@ def test_defaults(tmp_path, monkeypatch):
     assert s.sandbox is False
     assert s.allow_lua is False
     assert s.max_read_pixels == 65536
+    assert s.max_scan_pixels == 16 * 1024 * 1024
     assert s.max_procs == min(4, os.cpu_count() or 1)
 
 
@@ -50,6 +51,10 @@ def test_invalid_ints_fall_back(raw):
     s = load_settings({"ASEPRITE_MCP_MAX_PROCS": raw, "ASEPRITE_MCP_MAX_READ_PIXELS": raw})
     assert s.max_procs == min(4, os.cpu_count() or 1)
     assert s.max_read_pixels == 65536
+
+
+def test_scan_pixel_limit_from_env():
+    assert load_settings({"ASEPRITE_MCP_MAX_SCAN_PIXELS": "500"}).max_scan_pixels == 500
 
 
 def test_find_aseprite_env_wins(tmp_path):

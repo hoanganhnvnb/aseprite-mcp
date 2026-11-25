@@ -1,3 +1,4 @@
+import dataclasses
 import json
 from pathlib import Path
 
@@ -110,6 +111,51 @@ async def test_check_animation_overlap_on_indexed_sprite(call):
     result = await call("check_animation", path="a.aseprite", overlap_pairs=[["Layer 1", "Hat"]])
 
     assert [(f["kind"], f["pixels"]) for f in result["findings"]] == [("overlap", 1)]
+
+
+def box(x: int, y: int, w: int, h: int, layer: str, color: str = RED) -> dict:
+    return op("draw_rect", rect=rect(x, y, w, h), color=color, fill=True, layer=layer)
+
+
+async def test_check_animation_counts_overlap_of_partly_covering_layers(call):
+    await setup(
+        call,
+        op("add_layer", name="Hat"),
+        box(0, 0, 4, 3, "Layer 1"),
+        box(2, 1, 5, 5, "Hat", color="#0000ff40"),
+        dot(7, 7, "Layer 1"),
+    )
+
+    result = await call("check_animation", path="a.aseprite", overlap_pairs=[["Layer 1", "Hat"]])
+
+    [finding] = result["findings"]
+    assert finding["pixels"] == 4
+    assert finding["bounds"] == rect(2, 1, 2, 2)
+
+
+async def test_check_animation_overlap_with_indexed_background(call, pixels, tmp_path: Path):
+    await setup(call, op("add_frames"), color_mode="indexed")
+    await pixels(tmp_path / "a.aseprite", background=True)
+    await call("batch", path="a.aseprite", ops=[op("add_layer", name="Hat"), dot(2, 2, "Hat")])
+
+    result = await call(
+        "check_animation", path="a.aseprite", frames="1", overlap_pairs=[["Background", "Hat"]]
+    )
+
+    assert [(f["kind"], f["pixels"]) for f in result["findings"]] == [("overlap", 1)]
+
+
+async def test_check_animation_refuses_overlap_scan_over_limit(
+    call, ase_settings, monkeypatch: pytest.MonkeyPatch
+):
+    await setup(
+        call, op("add_layer", name="Hat"), box(0, 0, 4, 4, "Layer 1"), box(2, 2, 4, 4, "Hat")
+    )
+    small = dataclasses.replace(ase_settings, max_scan_pixels=15)
+    monkeypatch.setattr(server, "get_settings", lambda: small)
+
+    with pytest.raises(ToolError, match="would scan 16 pixels .* more than the limit of 15"):
+        await call("check_animation", path="a.aseprite", overlap_pairs=[["Layer 1", "Hat"]])
 
 
 async def test_check_animation_warns_about_ambiguous_name(call):
@@ -230,6 +276,31 @@ async def test_repair_ensure_layers_inside_group(call):
     result = await call("repair_animation", path="a.aseprite", ensure_layers=["G/Shadow"])
 
     assert result["created"] == ["G/Shadow"]
+
+
+async def test_repair_range_may_name_a_layer_it_creates(call):
+    await setup(call, op("add_layer", name="G", kind="group"))
+
+    result = await call(
+        "repair_animation",
+        path="a.aseprite",
+        ensure_layers=["G/X"],
+        layer_frame_ranges={"X": "1"},
+    )
+
+    assert result["created"] == ["G/X"]
+    assert result["missing_in_range"] == [{"layer": "G/X", "frames": [1]}]
+
+
+async def test_batch_saves_when_only_some_ops_change_nothing(call):
+    await setup(call)
+    report = op("repair_animation", layer_frame_ranges={"Layer 1": "1"})
+
+    await call("batch", path="a.aseprite", ops=[dot(1, 1, "Layer 1"), report])
+    await call("batch", path="a.aseprite", ops=[report, dot(2, 2, "Layer 1", color=BLUE)])
+
+    read = await call("read_pixels", path="a.aseprite", rect=rect(1, 1, 2, 2), format="hex")
+    assert read["rows"] == ["#ff0000 .", ". #0000ff"]
 
 
 async def test_repair_layer_order_is_bottom_to_top(call):

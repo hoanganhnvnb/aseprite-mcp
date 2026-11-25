@@ -76,21 +76,14 @@ local function opaque_value(spr)
   return spr.transparentColor == 0 and 1 or 0
 end
 
--- Draws the pixels of `layers` in frame n into mask (canvas sized, sprite colour mode)
--- and returns the canvas area they touch, or nil.
-local function fill_mask(spr, mask, layers, n)
-  mask:clear(clear_value(spr))
+-- The canvas area the pixels of `layers` can cover in frame n, from cel bounds; or nil.
+local function pixel_area(spr, layers, n)
   local area
   for _, layer in ipairs(layers) do
     local cel = layer:cel(n)
     if not layer.isTilemap and has_pixels(layer, cel) then
       local box = cel.bounds:intersect(spr.bounds)
       if not box.isEmpty then
-        if layer.isBackground then
-          mask:clear(opaque_value(spr))
-        else
-          mask:drawImage(cel.image, cel.position)
-        end
         area = area and area:union(box) or box
       end
     end
@@ -98,14 +91,70 @@ local function fill_mask(spr, mask, layers, n)
   return area
 end
 
+-- Draws the pixels of `layers` in frame n into mask (canvas sized, sprite colour mode)
+-- and returns the box around them, or nil.
+local function fill_mask(spr, mask, layers, n)
+  mask:clear(clear_value(spr))
+  local drawn = false
+  for _, layer in ipairs(layers) do
+    local cel = layer:cel(n)
+    if not layer.isTilemap and has_pixels(layer, cel) then
+      if layer.isBackground then
+        mask:clear(opaque_value(spr))
+      else
+        mask:drawImage(cel.image, cel.position)
+      end
+      drawn = true
+    end
+  end
+  if not drawn then
+    return nil
+  end
+  local box = mask:shrinkBounds():intersect(spr.bounds)
+  return not box.isEmpty and box or nil
+end
+
+local BYTES_PER_PIXEL = { [ColorMode.RGB] = 4, [ColorMode.GRAY] = 2, [ColorMode.INDEXED] = 1 }
+
+-- Counts the pixels in `area` that both masks cover, reading their raw bytes: one
+-- getPixel call per pixel took seconds for a 2048x2048 pair. The byte checked is the
+-- alpha of RGB and gray pixels and the index of indexed ones.
 local function overlap(spr, a, b, area)
+  local bpp = BYTES_PER_PIXEL[spr.colorMode]
+  local empty = clear_value(spr)
+  local stride = a.width * bpp
+  local width = area.width * bpp
+  local blank = string.rep(string.char(empty), width)
+  local abytes, bbytes = a.bytes, b.bytes
+  local byte = string.byte
+  local function both(i)
+    return byte(abytes, i) ~= empty and byte(bbytes, i) ~= empty
+  end
   local count, x0, y0, x1, y1 = 0, math.huge, math.huge, -1, -1
   for y = area.y, area.y + area.height - 1 do
-    for x = area.x, area.x + area.width - 1 do
-      if not is_transparent(spr, a:getPixel(x, y)) and not is_transparent(spr, b:getPixel(x, y)) then
-        count = count + 1
-        x0, y0 = math.min(x0, x), math.min(y0, y)
-        x1, y1 = math.max(x1, x), math.max(y1, y)
+    local start = y * stride + area.x * bpp + 1
+    local stop = start + width - 1
+    if abytes:sub(start, stop) ~= blank and bbytes:sub(start, stop) ~= blank then
+      local hits = 0
+      for i = start + bpp - 1, stop, bpp do
+        if byte(abytes, i) ~= empty and byte(bbytes, i) ~= empty then
+          hits = hits + 1
+        end
+      end
+      if hits > 0 then
+        -- The row's first and last hit, found from each end, give the bounds.
+        local first, last = start + bpp - 1, stop
+        while not both(first) do
+          first = first + bpp
+        end
+        while not both(last) do
+          last = last - bpp
+        end
+        count = count + hits
+        x0 = math.min(x0, (first - start) // bpp + area.x)
+        x1 = math.max(x1, (last - start) // bpp + area.x)
+        y0 = math.min(y0, y)
+        y1 = y
       end
     end
   end
@@ -113,6 +162,29 @@ local function overlap(spr, a, b, area)
     return 0
   end
   return count, { x = x0, y = y0, w = x1 - x0 + 1, h = y1 - y0 + 1 }
+end
+
+-- Fails before any scanning when the pairs would read more than `limit` pixels.
+local function check_scan_size(spr, pairs_to_check, frames, limit)
+  local total = 0
+  for _, pair in ipairs(pairs_to_check) do
+    local la, lb = members(spr, pair[1]), members(spr, pair[2])
+    for _, n in ipairs(frames) do
+      local area_a = pixel_area(spr, la, n)
+      local area_b = area_a and pixel_area(spr, lb, n)
+      if area_b then
+        local area = area_a:intersect(area_b)
+        if not area.isEmpty then
+          total = total + area.width * area.height
+        end
+      end
+    end
+  end
+  if total > limit then
+    fail(string.format("the overlap check would scan %d pixels (where the pairs' cels meet, "
+      .. "over all frames), more than the limit of %d (ASEPRITE_MCP_MAX_SCAN_PIXELS); "
+      .. "check fewer frames or pairs at a time", total, limit))
+  end
 end
 
 OPS.check_animation = function(ctx, p)
@@ -189,6 +261,7 @@ OPS.check_animation = function(ctx, p)
     end
   end
   if #pairs_to_check > 0 then
+    check_scan_size(spr, pairs_to_check, frames, p.max_scan_pixels)
     -- Two canvas-sized masks for the whole call: images are not counted by Lua's
     -- collector, so allocating them per frame piles up memory.
     local mask_a = new_image(spr, spr.width, spr.height)
@@ -349,7 +422,12 @@ OPS.repair_animation = function(ctx, p)
   local spr = need_sprite(ctx)
   local frames = frame_list(spr, p.frames)
   local creating = plan_new_layers(spr, p.ensure_layers or {})
-  local pending = set_of(p.ensure_layers or {})
+  -- A range may name a layer this call creates, by its path or its bare name.
+  local pending = {}
+  for _, path in ipairs(p.ensure_layers or {}) do
+    local _, name = split_path(path)
+    pending[path], pending[name] = true, true
+  end
   local ranges = {}
   for name, spec in pairs(p.layer_frame_ranges or {}) do
     local allowed = range_frames(spr, name, spec)
