@@ -36,6 +36,11 @@ class _Server(ThreadingHTTPServer):
         pass
 
 
+def _odd_name(name: str) -> bool:
+    # dotfiles, plus anything that Windows would read as a separator or a drive
+    return name.startswith(".") or "\\" in name or name[1:2] == ":"
+
+
 class _Handler(SimpleHTTPRequestHandler):
     """Serves one folder read-only below a secret first path segment.
 
@@ -82,7 +87,7 @@ class _Handler(SimpleHTTPRequestHandler):
             return None
         names = urllib.parse.unquote(rest).split("/")
         target = self.translate_path(self.path)
-        if any(name.startswith(".") for name in names) or not self._allowed(target):
+        if any(_odd_name(name) for name in names) or not self._allowed(target):
             self.send_error(404, "File not found")
             return None
         return super().send_head()

@@ -160,6 +160,14 @@ def test_preview_blocks_parent_paths(preview, site):
     assert status(preview, str(site.parent / "secret.png")) == 404
 
 
+def test_preview_blocks_backslash_and_drive_names(preview, site):
+    preview.start(site)
+
+    assert status(preview, "..%5csecret.png") == 404
+    assert status(preview, "C:%5Csecret.png") == 404
+    assert status(preview, "C:secret.png") == 404
+
+
 @pytest.mark.skipif(not hasattr(os, "symlink"), reason="needs symlinks")
 def test_preview_blocks_symlinks_out_of_the_folder(preview, site):
     try:
