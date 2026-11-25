@@ -1,9 +1,11 @@
-from dataclasses import dataclass
+import os
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
 from .config import Settings
-from .runner import LUA_DIR, run_script
+from .errors import AsepriteError
+from .runner import LUA_DIR, remove_temp_files, run_script, temp_sibling
 
 MAIN_SCRIPT = LUA_DIR / "main.lua"
 
@@ -13,6 +15,15 @@ class Op:
     name: str
     params: dict[str, Any]
     mutates: bool
+    # Shown in error messages instead of the op name, e.g. the tool that built it.
+    label: str | None = None
+    # Files the op writes besides the sprite, as (temporary, final) pairs. The op
+    # writes the temporary file; it is moved into place only if the whole run succeeds.
+    writes: list[tuple[Path, Path]] = field(default_factory=list)
+
+
+def output_file(final: Path) -> tuple[Path, Path]:
+    return temp_sibling(final), final
 
 
 def op_files() -> list[str]:
@@ -30,20 +41,35 @@ async def run_ops(
     if create is not None and path is None:
         raise ValueError("create needs a target path")
     saves = create is not None or any(op.mutates for op in ops)
+    writes = [pair for op in ops for pair in op.writes]
     params = {
-        "ops": [{"name": op.name, "params": op.params, "mutates": op.mutates} for op in ops],
+        "ops": [
+            {"name": op.name, "label": op.label, "params": op.params, "mutates": op.mutates}
+            for op in ops
+        ],
         "op_files": op_files(),
         "create": create,
         "target": str(path) if path is not None else None,
     }
-    result = await run_script(
-        MAIN_SCRIPT,
-        params,
-        settings=settings,
-        lock_paths=[path] if path is not None else (),
-        open_file=path if create is None else None,
-        save_to=path if saves else None,
-    )
+    lock_paths = [final for _, final in writes]
+    if path is not None:
+        lock_paths.append(path)
+    try:
+        result = await run_script(
+            MAIN_SCRIPT,
+            params,
+            settings=settings,
+            lock_paths=lock_paths,
+            open_file=path if create is None else None,
+            save_to=path if saves else None,
+        )
+        for tmp, final in writes:
+            if not tmp.is_file():
+                raise AsepriteError(f"Aseprite could not write {final}")
+            os.replace(tmp, final)
+    finally:
+        for tmp, _ in writes:
+            remove_temp_files(tmp)
     # Aseprite's json.encode writes an empty table as [], so an op that returns
     # an empty object comes back as a list.
     return [r if r != [] else {} for r in result.data.get("results", [])]

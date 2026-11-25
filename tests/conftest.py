@@ -4,10 +4,13 @@ from pathlib import Path
 
 import pytest
 
+from aseprite_mcp import server
 from aseprite_mcp.config import Settings, load_settings
 from aseprite_mcp.ops import run_ops
+from aseprite_mcp.runner import run_script
 
 MakeSprite = Callable[..., Awaitable[Path]]
+PIXELS_SCRIPT = Path(__file__).parent / "lua" / "pixels.lua"
 
 
 def pytest_collection_modifyitems(items: list[pytest.Item]) -> None:
@@ -40,3 +43,33 @@ def make_sprite(ase_settings: Settings) -> MakeSprite:
         return path
 
     return make
+
+
+@pytest.fixture
+def call(ase_settings: Settings, monkeypatch: pytest.MonkeyPatch):
+    """Calls a tool the way a client does, arguments validated by the server."""
+    monkeypatch.setattr(server, "get_settings", lambda: ase_settings)
+
+    async def call_tool(name: str, **args):
+        _, structured = await server.mcp.call_tool(name, args)
+        return structured
+
+    return call_tool
+
+
+@pytest.fixture
+def pixels(ase_settings: Settings):
+    """Sets pixels as (x, y, r, g, b, a) and reads pixels at (x, y) on the first layer."""
+
+    async def run(path: Path, put: Sequence = (), read: Sequence = ()) -> list[list[int]]:
+        result = await run_script(
+            PIXELS_SCRIPT,
+            {"set": [list(p) for p in put], "get": [list(r) for r in read]},
+            settings=ase_settings,
+            lock_paths=[path],
+            open_file=path,
+            save_to=path if put else None,
+        )
+        return result.data["pixels"]
+
+    return run

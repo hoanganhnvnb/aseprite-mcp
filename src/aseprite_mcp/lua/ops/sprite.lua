@@ -88,6 +88,68 @@ OPS.sprite_info = function(ctx)
   }
 end
 
+local FORMAT_NAMES = { rgb = "rgb", grayscale = "gray", indexed = "indexed" }
+
+-- Converting to indexed maps transparent pixels to the transparent index. When that
+-- entry is an opaque palette colour, opaque pixels of that colour can no longer use
+-- it, so give transparency its own entry first (as new indexed sprites have).
+local function reserve_transparent_entry(spr)
+  local pal = spr.palettes[1]
+  local index = spr.transparentColor
+  if #pal >= 256 or index ~= 0 or pal:getColor(0).alpha == 0 then
+    return
+  end
+  local shifted = Palette(#pal + 1)
+  shifted:setColor(0, Color { r = 0, g = 0, b = 0, a = 0 })
+  for i = 0, #pal - 1 do
+    shifted:setColor(i + 1, pal:getColor(i))
+  end
+  spr:setPalette(shifted)
+end
+
+OPS.set_color_mode = function(ctx, p)
+  local spr = need_sprite(ctx)
+  local format = FORMAT_NAMES[p.mode]
+  if format == nil then
+    fail("unknown color mode '" .. tostring(p.mode) .. "' (use rgb, grayscale or indexed)")
+  end
+  if MODE_NAMES[spr.colorMode] == p.mode then
+    return { color_mode = p.mode, changed = false }
+  end
+  if p.mode == "indexed" then
+    reserve_transparent_entry(spr)
+  end
+  app.sprite = spr
+  app.command.ChangePixelFormat { ui = false, format = format }
+  return { color_mode = MODE_NAMES[spr.colorMode], changed = true }
+end
+
+OPS.resize_sprite = function(ctx, p)
+  local spr = need_sprite(ctx)
+  spr:resize(p.width, p.height)
+  return { width = spr.width, height = spr.height }
+end
+
+OPS.crop_sprite = function(ctx, p)
+  local spr = need_sprite(ctx)
+  local r = p.rect
+  local rect = Rectangle(r.x, r.y, r.w, r.h)
+  if not rect:intersects(spr.bounds) then
+    fail(string.format("crop rectangle (%d, %d, %d x %d) does not overlap the %d x %d canvas",
+      r.x, r.y, r.w, r.h, spr.width, spr.height))
+  end
+  spr:crop(rect)
+  return { width = spr.width, height = spr.height }
+end
+
+-- p.output is a temporary name next to the real target; the server moves it into
+-- place once the whole run has succeeded.
+OPS.save_copy = function(ctx, p)
+  local spr = need_sprite(ctx)
+  check_save_format(spr, p.output)
+  spr:saveCopyAs(p.output)
+end
+
 -- Version probe for the doctor command; "fail" and "crash" exercise both error
 -- paths and "echo" comes back as decoded, to check parameter passing.
 OPS._ping = function(_, p)

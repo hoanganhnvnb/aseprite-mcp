@@ -128,6 +128,21 @@ function frame_list(spr, spec)
   return out
 end
 
+-- Formats that hold one image; saveCopyAs would write numbered files instead.
+local SINGLE_IMAGE = {
+  png = true, jpg = true, jpeg = true, bmp = true, tga = true,
+  pcx = true, ico = true, webp = true, qoi = true,
+}
+
+function check_save_format(spr, target)
+  local ext = (target or ""):match("%.([^.\\/]+)$")
+  if ext and SINGLE_IMAGE[ext:lower()] and #spr.frames > 1 then
+    fail(string.format(
+      "a .%s file holds one frame but the sprite has %d; save it as .aseprite or .gif",
+      ext, #spr.frames))
+  end
+end
+
 local pc = app.pixelColor
 
 local function luma(r, g, b)

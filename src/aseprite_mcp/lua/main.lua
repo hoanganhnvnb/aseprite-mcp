@@ -88,22 +88,14 @@ local function create_sprite(spec)
     local layer = spr.layers[i] or spr:newLayer()
     layer.name = name
   end
-  return spr
-end
-
--- Formats that hold one image; saveCopyAs would write numbered files instead.
-local SINGLE_IMAGE = {
-  png = true, jpg = true, jpeg = true, bmp = true, tga = true,
-  pcx = true, ico = true, webp = true, qoi = true,
-}
-
-local function check_save_format(spr, target)
-  local ext = (target or ""):match("%.([^.\\/]+)$")
-  if ext and SINGLE_IMAGE[ext:lower()] and #spr.frames > 1 then
-    fail(string.format(
-      "a .%s file holds one frame but the sprite has %d; save it as .aseprite or .gif",
-      ext, #spr.frames))
+  if spec.background then
+    local layer = spr.layers[1]
+    for _, frame in ipairs(spr.frames) do
+      local cel = layer:cel(frame) or spr:newCel(layer, frame)
+      cel.image:clear(color_value(spr, spec.background, layer))
+    end
   end
+  return spr
 end
 
 local function error_text(err)
@@ -134,7 +126,7 @@ local function run_ops(ctx, ops)
     if not ok then
       local message = error_text(res)
       if #ops > 1 then
-        message = string.format("op %d (%s): %s", i, op.name, message)
+        message = string.format("op %d (%s): %s", i, op.label or op.name, message)
       end
       error({ op_index = i, message = message })
     end

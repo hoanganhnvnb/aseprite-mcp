@@ -58,17 +58,17 @@ def _tail(text: str) -> str:
     return text[-STDERR_TAIL:].strip()
 
 
-def _save_tmp_path(save_to: Path) -> Path:
+def temp_sibling(path: Path) -> Path:
     token = secrets.token_hex(4)
-    return save_to.with_name(f".{save_to.stem}.{token}.tmp{save_to.suffix}")
+    return path.with_name(f".{path.stem}.{token}.tmp{path.suffix}")
 
 
-def _remove_save_leftovers(save_tmp: Path) -> None:
+def remove_temp_files(tmp: Path) -> None:
     # Saving a multi-frame sprite to a single-image format makes Aseprite write
     # numbered siblings (.x.token.tmp1.png, ...) next to the requested name.
-    prefix = save_tmp.name.removesuffix(save_tmp.suffix)
+    prefix = tmp.name.removesuffix(tmp.suffix)
     try:
-        entries = list(os.scandir(save_tmp.parent))
+        entries = list(os.scandir(tmp.parent))
     except OSError:
         return
     for entry in entries:
@@ -177,7 +177,7 @@ async def _run_locked(
     open_file: Path | None,
     save_to: Path | None,
 ) -> RunResult:
-    save_tmp = _save_tmp_path(save_to) if save_to is not None else None
+    save_tmp = temp_sibling(save_to) if save_to is not None else None
     started = time.monotonic()
     try:
         with tempfile.TemporaryDirectory(prefix="aseprite-mcp-") as tmp:
@@ -217,4 +217,4 @@ async def _run_locked(
         return RunResult(data, stdout, stderr, time.monotonic() - started)
     finally:
         if save_tmp is not None:
-            _remove_save_leftovers(save_tmp)
+            remove_temp_files(save_tmp)
