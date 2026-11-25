@@ -15,6 +15,8 @@ from ..ops import Op, output_file, run_ops
 from ..paths import check_save_extension, resolve_path
 
 Builder = Callable[..., dict[str, Any]]
+# Turns the op's raw result into the tool result; gets the result and the op params.
+Finisher = Callable[[dict[str, Any], dict[str, Any]], dict[str, Any]]
 
 SpritePath = Annotated[
     str,
@@ -30,6 +32,7 @@ class _Extra:
     path_arg: str
     writes: str | None
     args_model: type[BaseModel]
+    finish: Finisher | None
 
 
 def _args_model(name: str, signature: inspect.Signature) -> type[BaseModel]:
@@ -55,7 +58,12 @@ _EXTRA: dict[str, _Extra] = {}
 
 
 def op_tool(
-    op: str, *, mutates: bool, path_arg: str = "path", writes: str | None = None
+    op: str,
+    *,
+    mutates: bool,
+    path_arg: str = "path",
+    writes: str | None = None,
+    finish: Finisher | None = None,
 ) -> Callable[[Builder], Callable[..., Any]]:
     """Register a tool that maps to exactly one Lua op.
 
@@ -66,6 +74,7 @@ def op_tool(
     resolves it like any path, checks the folder, the extension and the builder's
     `overwrite` argument (False when it has none), and the op writes to a temporary
     file that replaces the output only when the whole run succeeds.
+    `finish` reshapes the op's result in Python, in direct calls and in batch alike.
     """
 
     def register(builder: Builder) -> Callable[..., Any]:
@@ -91,7 +100,7 @@ def op_tool(
         )
         server.mcp.add_tool(tool, name=name)
         BATCHABLE[name] = (op, mutates, builder)
-        _EXTRA[name] = _Extra(path_arg, writes, _args_model(name, signature))
+        _EXTRA[name] = _Extra(path_arg, writes, _args_model(name, signature), finish)
         return tool
 
     return register
@@ -133,7 +142,10 @@ def make_op(tool: str, params: dict[str, Any], path: Path, overwrite: bool = Fal
 
 
 def op_result(tool: str, op: Op, result: dict[str, Any]) -> dict[str, Any]:
-    key = _EXTRA[tool].writes
+    extra = _EXTRA[tool]
+    if extra.finish is not None:
+        result = extra.finish(result, op.params)
+    key = extra.writes
     if key is None:
         return result
     return {**result, key: str(op.writes[0][1])}
