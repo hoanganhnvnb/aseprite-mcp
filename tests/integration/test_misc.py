@@ -144,4 +144,51 @@ async def test_run_lua_error_with_table_value(lua):
 async def test_run_lua_invalid_utf8_in_result_is_replaced(lua):
     result = await lua(script="return string.char(104, 255, 105)")
 
-    assert result["result"] == "h�i"
+    assert result["result"] == "h\ufffdi"
+
+
+async def test_run_lua_invalid_utf8_in_output_is_replaced(lua):
+    result = await lua(script='print("\\xff")')
+
+    assert result["output"] == "\ufffd\n"
+
+
+async def test_run_lua_nul_in_output_is_escaped(lua):
+    result = await lua(script='print("a\\0b")\nprint("later")')
+
+    assert result["output"] == "a\\0b\nlater\n"
+    assert result["truncated"] is False
+
+
+async def test_run_lua_nul_in_result_is_escaped(lua):
+    result = await lua(script='return "r\\0s"')
+
+    assert result["result"] == "r\\0s"
+
+
+async def test_run_lua_large_string_result_rejected(lua):
+    with pytest.raises(ToolError, match="return value is too large"):
+        await lua(script='return string.rep("x", 2 * 1024 * 1024)')
+
+
+async def test_run_lua_long_error_message_is_cut(lua):
+    with pytest.raises(ToolError, match="bytes cut") as caught:
+        await lua(script='error(string.rep("y", 20 * 1024 * 1024))')
+
+    assert len(str(caught.value)) < 8192
+
+
+async def test_run_lua_error_object_with_tostring(lua):
+    script = 'error(setmetatable({}, { __tostring = function() return "custom failure" end }))'
+
+    with pytest.raises(ToolError, match="custom failure"):
+        await lua(script=script)
+
+
+async def test_run_lua_traceback_shows_only_script_frames(lua):
+    with pytest.raises(ToolError, match=r"run_lua:2: deep") as caught:
+        await lua(script='local function inner()\n  error("deep")\nend\ninner()')
+
+    assert "run_lua:4" in str(caught.value)
+    assert "xpcall" not in str(caught.value)
+    assert "ops/misc.lua" not in str(caught.value)

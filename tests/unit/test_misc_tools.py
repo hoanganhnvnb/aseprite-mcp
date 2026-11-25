@@ -12,11 +12,19 @@ from aseprite_mcp.guide import GUIDES
 from aseprite_mcp.server import INSTRUCTIONS, mcp
 from aseprite_mcp.tools.misc import add_lua_tool
 
-TOOL_TOKEN = re.compile(r"`([a-z][a-z0-9]*(?:_[a-z0-9]+)+)`")
+BACKTICKED = re.compile(r"`([^`]*)`")
+SNAKE_CASE = re.compile(r"\b[a-z][a-z0-9]*(?:_[a-z0-9]+)+\b")
+# Tool arguments the guides name in passing; each must be a real parameter.
+ARGUMENT_NAMES = {"hue_shift", "copy_content", "amplitude_y", "onion_skin"}
 
 
 async def _tool_names(app: FastMCP = mcp) -> set[str]:
     return {tool.name for tool in await app.list_tools()}
+
+
+def unknown_names(text: str, tools: set[str]) -> set[str]:
+    named = set(BACKTICKED.findall(text)) | set(SNAKE_CASE.findall(text))
+    return named - tools - ARGUMENT_NAMES
 
 
 async def test_run_lua_not_registered_by_default():
@@ -43,6 +51,15 @@ async def test_run_lua_not_registered_when_sandbox_on():
     add_lua_tool(app, settings)
 
     assert "run_lua" not in await _tool_names(app)
+
+
+async def test_run_lua_refuses_when_settings_disallow_it(monkeypatch: pytest.MonkeyPatch):
+    app = FastMCP("t")
+    add_lua_tool(app, load_settings({"ASEPRITE_MCP_ALLOW_LUA": "1"}))
+    monkeypatch.setattr(server, "get_settings", lambda: load_settings({}))
+
+    with pytest.raises(ToolError, match="run_lua is disabled"):
+        await app.call_tool("run_lua", {"script": "return 1"})
 
 
 def test_adding_run_lua_raises_no_warnings():
@@ -82,10 +99,29 @@ async def test_batch_rejects_run_lua(tmp_path: Path, monkeypatch: pytest.MonkeyP
 
 
 async def test_instructions_mention_only_existing_tools():
-    mentioned = set(TOOL_TOKEN.findall(INSTRUCTIONS))
+    assert unknown_names(INSTRUCTIONS, await _tool_names()) == set()
 
-    assert {"view_sprite", "find_stray_pixels", "check_animation"} <= mentioned
-    assert mentioned <= await _tool_names()
+
+def test_instructions_name_the_check_tools():
+    assert {"view_sprite", "find_stray_pixels", "check_animation"} <= set(
+        BACKTICKED.findall(INSTRUCTIONS)
+    )
+
+
+async def test_unknown_backticked_name_is_caught():
+    assert unknown_names("Then call `sharpen`.", await _tool_names()) == {"sharpen"}
+
+
+async def test_unknown_snake_case_name_is_caught():
+    text = "Run smooth_edges after outline."
+
+    assert unknown_names(text, await _tool_names()) == {"smooth_edges"}
+
+
+async def test_allowed_argument_names_are_tool_parameters():
+    params = {name for tool in await mcp.list_tools() for name in tool.inputSchema["properties"]}
+
+    assert ARGUMENT_NAMES <= params
 
 
 def test_instructions_are_short():
@@ -93,12 +129,11 @@ def test_instructions_are_short():
 
 
 async def test_every_guide_mentions_only_existing_tools():
-    names = await _tool_names()
+    tools = await _tool_names()
 
     for topic, text in GUIDES.items():
-        mentioned = set(TOOL_TOKEN.findall(text))
-        assert mentioned, topic
-        assert mentioned <= names, topic
+        assert BACKTICKED.findall(text), topic
+        assert unknown_names(text, tools) == set(), topic
 
 
 async def test_pixel_art_guide_returns_text_for_every_topic():

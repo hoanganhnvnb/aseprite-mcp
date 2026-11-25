@@ -66,16 +66,19 @@ async def run_lua(
 
     With a path, the sprite is open as the global `sprite` (also app.sprite).
     Changes are discarded unless save=true, which saves the sprite once the script
-    succeeds; on any error nothing is saved. print() output is returned in `output`
+    succeeds. On an error the tool saves nothing (a script that saves the sprite
+    itself is outside this guarantee). print() output is returned in `output`
     (up to 64 KB, `truncated` tells if more was cut), and the script's return value
     in `result` (tables become JSON). Relative paths inside the script are not
     resolved against the root. Prefer the dedicated tools when one fits.
     """
+    settings = server.get_settings()
+    if not settings.allow_lua or settings.sandbox:
+        raise ToolError("run_lua is disabled (needs ASEPRITE_MCP_ALLOW_LUA=1 and no sandbox)")
     if len(script.encode("utf-8")) > MAX_SCRIPT_BYTES:
         raise ToolError(f"The script is too large (limit {MAX_SCRIPT_BYTES // 1024} KB)")
     if save and path is None:
         raise ToolError("save=true needs a path to the sprite to save")
-    settings = server.get_settings()
     target = resolve_path(path, settings, must_exist=True) if path is not None else None
     op = Op("run_lua", {"script": script}, mutates=save, label="run_lua")
     [result] = await run_ops(target, [op], settings=settings)
@@ -89,6 +92,8 @@ async def run_lua(
 
 def add_lua_tool(app: FastMCP, settings: Settings) -> bool:
     """Register run_lua on app when the settings allow it; sandbox mode never does."""
+    # These settings decide whether the tool exists; each call checks
+    # server.get_settings() again, which is the same object in the real server.
     if not settings.allow_lua or settings.sandbox:
         return False
     app.add_tool(run_lua)

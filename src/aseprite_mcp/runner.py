@@ -136,7 +136,7 @@ async def _execute(argv: list[str], timeout: float) -> tuple[int, str, str]:
 
 def _read_result(path: Path) -> dict[str, Any] | None:
     try:
-        data = json.loads(path.read_bytes().decode("utf-8", errors="replace"))
+        data = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, ValueError):
         return None
     return data if isinstance(data, dict) else None
