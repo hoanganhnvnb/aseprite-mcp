@@ -1,3 +1,4 @@
+import sys
 from pathlib import Path
 
 import pytest
@@ -529,3 +530,84 @@ async def test_draw_tools_in_one_batch(call, pixels, tmp_path: Path, monkeypatch
         GREEN,
         GREEN,
     ]
+
+
+async def test_draw_on_locked_layer_fails(call, locks, tmp_path: Path):
+    await new_sprite(call)
+    await locks(tmp_path / "a.aseprite", lock=["Layer 1"])
+
+    with pytest.raises(ToolError, match="'Layer 1' is locked; unlock it first"):
+        await call("draw_pixels", path="a.aseprite", pixels=[px(0, 0, "#ff0000")])
+
+
+async def test_draw_inside_locked_group_fails(call, locks, tmp_path: Path):
+    await new_sprite(call)
+    await call("add_layer", path="a.aseprite", name="G", kind="group")
+    await call("add_layer", path="a.aseprite", name="Ink", parent="G")
+    await locks(tmp_path / "a.aseprite", lock=["G"])
+
+    with pytest.raises(ToolError, match="'G/Ink' is inside the locked group 'G'"):
+        await call("fill_area", path="a.aseprite", x=0, y=0, color="#ff0000", layer="G/Ink")
+
+
+async def test_draw_next_to_locked_layer_works(call, locks, pixels, tmp_path: Path):
+    path = tmp_path / "a.aseprite"
+    await new_sprite(call)
+    await call("add_layer", path="a.aseprite", name="Top")
+    await locks(path, lock=["Top"])
+
+    await call("draw_pixels", path="a.aseprite", pixels=[px(2, 2, "#ff0000")])
+
+    assert await pixels(path, read=[(2, 2)]) == [RED]
+    assert await locks(path) == ["Top"]
+
+
+async def test_many_draws_in_one_batch_write_only_touched_pixels(call, pixels, tmp_path: Path):
+    await call("create_sprite", path="a.aseprite", width=1024, height=1024, background="#ffffff")
+    ops = [{"tool": "draw_pixels", "args": {"pixels": [px(i, 0, "#ff0000")]}} for i in range(200)]
+
+    await call("batch", path="a.aseprite", ops=ops)
+
+    assert await pixels(tmp_path / "a.aseprite", read=[(0, 0), (199, 0), (200, 0)]) == [
+        RED,
+        RED,
+        [255, 255, 255, 255],
+    ]
+    if sys.platform == "linux":
+        import resource
+
+        # Replacing the whole image per op kept 200 copies of it (over 800 MB) in undo.
+        peak_mb = resource.getrusage(resource.RUSAGE_CHILDREN).ru_maxrss // 1024
+        assert peak_mb < 400
+
+
+async def no_aseprite(*args, **kwargs):
+    raise AssertionError("Aseprite should not run")
+
+
+async def test_batch_rejects_too_many_pixels(call, monkeypatch, tmp_path: Path):
+    await new_sprite(call)
+    before = (tmp_path / "a.aseprite").read_bytes()
+    monkeypatch.setattr(ops, "run_script", no_aseprite)
+    many = [px(0, 0, "#ff0000")] * 16385
+
+    with pytest.raises(ToolError, match="at most 16384"):
+        await call(
+            "batch", path="a.aseprite", ops=[{"tool": "draw_pixels", "args": {"pixels": many}}]
+        )
+
+    assert (tmp_path / "a.aseprite").read_bytes() == before
+
+
+async def test_batch_rejects_string_coordinates(call, monkeypatch, tmp_path: Path):
+    await new_sprite(call)
+    before = (tmp_path / "a.aseprite").read_bytes()
+    monkeypatch.setattr(ops, "run_script", no_aseprite)
+    bad = {"x": "0) os.execute('x') --", "y": 0, "color": "#ff0000"}
+
+    with pytest.raises(ToolError, match="valid integer"):
+        await call(
+            "batch", path="a.aseprite", ops=[{"tool": "draw_pixels", "args": {"pixels": [bad]}}]
+        )
+
+    assert (tmp_path / "a.aseprite").read_bytes() == before

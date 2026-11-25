@@ -1,5 +1,8 @@
 -- Drawing ops. Shapes are collected as horizontal spans clipped to the canvas, merged
--- per row so every pixel is written once, then painted into a copy of the cel image.
+-- per row so every pixel is written once, then painted into the cel image in place.
+-- Ops share one transaction, so every write goes through an undoable call that covers
+-- only the touched pixels (Image:clear on a rect, drawImage of a patch); replacing the
+-- whole image would keep a full copy of it in the undo history for every op.
 
 -- Spans are stored as l * SPAN_SHIFT + r so a row sorts with plain numbers.
 local SPAN_SHIFT = 1 << 20
@@ -27,6 +30,7 @@ end
 -- Resolves layer, frame and create_cel; shared by every drawing op.
 local function draw_target(spr, p)
   local layer, path = draw_layer(spr, p.layer)
+  require_editable(layer)
   local frame = frame_list(spr, p.frame or 1)[1]
   if layer:cel(frame) == nil and p.create_cel == false then
     fail(string.format("'%s' has no cel in frame %d; pass create_cel=true to add one",
@@ -35,15 +39,13 @@ local function draw_target(spr, p)
   return { spr = spr, layer = layer, path = path, frame = frame }
 end
 
--- The target's cel grown to cover rect, never shared with other frames, and a copy of
--- its image to paint into. Assign the copy back with `cel.image = img`.
+-- The target's cel, grown to cover rect and never shared with other frames.
 local function writable(t, rect)
   local cel = t.layer:cel(t.frame)
   if cel ~= nil then
     own_cel(t.spr, t.layer, cel, image_users(t.layer))
   end
-  cel = ensure_cel_bounds(t.spr, t.layer, t.frame, rect)
-  return cel, cel.image:clone()
+  return ensure_cel_bounds(t.spr, t.layer, t.frame, rect)
 end
 
 local function new_spans(spr)
@@ -151,16 +153,21 @@ local function paint_spans(t, s, color, blend)
     return 0
   end
   local spr, layer = t.spr, t.layer
-  local cel, img = writable(t, bounds)
+  local cel = writable(t, bounds)
+  local img = cel.image
   local ox, oy = cel.position.x, cel.position.y
   if blend and color[4] < 255 then
     local over = blender(spr, layer, color)
     for _, row in ipairs(rows) do
       local y, list = row.y - oy, row.spans
       for i = 1, #list, 2 do
-        for x = list[i] - ox, list[i + 1] - ox do
-          img:drawPixel(x, y, over(img:getPixel(x, y)))
+        local x0, w = list[i] - ox, list[i + 1] - list[i] + 1
+        local patch = new_image(spr, w, 1)
+        patch:drawImage(img, Point(-x0, -y), 255, BlendMode.SRC)
+        for x = 0, w - 1 do
+          patch:drawPixel(x, 0, over(patch:getPixel(x, 0)))
         end
+        img:drawImage(patch, Point(x0, y), 255, BlendMode.SRC)
       end
     end
   else
@@ -172,7 +179,6 @@ local function paint_spans(t, s, color, blend)
       end
     end
   end
-  cel.image = img
   return count
 end
 
@@ -381,7 +387,8 @@ OPS.draw_pixels = function(ctx, p)
   if #inside == 0 then
     return result
   end
-  local cel, img = writable(t, Rectangle(left, top, right - left + 1, bottom - top + 1))
+  local cel = writable(t, Rectangle(left, top, right - left + 1, bottom - top + 1))
+  local img = cel.image
   local ox, oy = cel.position.x, cel.position.y
   local values = {}
   for _, px in ipairs(inside) do
@@ -391,9 +398,8 @@ OPS.draw_pixels = function(ctx, p)
       value = color_value(spr, { px[3], px[4], px[5], px[6] }, t.layer)
       values[key] = value
     end
-    img:drawPixel(px[1] - ox, px[2] - oy, value)
+    img:clear(Rectangle(px[1] - ox, px[2] - oy, 1, 1), value)
   end
-  cel.image = img
   return result
 end
 

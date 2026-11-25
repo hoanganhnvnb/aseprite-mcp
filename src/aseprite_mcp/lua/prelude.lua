@@ -379,6 +379,38 @@ function put_cel(spr, layer, frame, image, position, props)
   return cel
 end
 
+-- Runs fn with the layer and all its parent groups unlocked, then restores every lock.
+function with_unlocked(layer, fn)
+  local chain, node = {}, layer
+  while node ~= layer.sprite do
+    table.insert(chain, { node, node.isEditable })
+    node.isEditable = true
+    node = node.parent
+  end
+  local ok, err = pcall(fn)
+  for _, entry in ipairs(chain) do
+    entry[1].isEditable = entry[2]
+  end
+  if not ok then
+    error(err, 0)
+  end
+end
+
+function require_editable(layer)
+  local path = layer_path(layer)
+  if not layer.isEditable then
+    fail("'" .. path .. "' is locked; unlock it first")
+  end
+  local parent = layer.parent
+  while parent ~= layer.sprite do
+    if not parent.isEditable then
+      fail(string.format("'%s' is inside the locked group '%s'; unlock it first",
+        path, layer_path(parent)))
+    end
+    parent = parent.parent
+  end
+end
+
 -- Linked cels share position and opacity along with the image, so a cel whose image
 -- other frames use as well gets replaced by its own copy before it is changed.
 function image_users(layer)
@@ -398,11 +430,16 @@ function own_cel(spr, layer, cel, users)
   users[id] = users[id] - 1
   if layer.isBackground then
     -- deleteCel leaves background cels in place, so put_cel cannot replace them.
+    -- Running UnlinkCel on a locked layer crashes Aseprite, hence the unlock.
     local frame = cel.frameNumber
     app.sprite = spr
     app.range.layers = { layer }
     app.range.frames = { cel.frame }
-    app.command.UnlinkCel()
+    local ok, err = pcall(with_unlocked, layer, app.command.UnlinkCel)
+    app.range:clear()
+    if not ok then
+      error(err, 0)
+    end
     cel = layer:cel(frame)
     if cel.image.id == id then
       fail(string.format("could not unlink the cel of '%s' in frame %d", layer.name, frame))

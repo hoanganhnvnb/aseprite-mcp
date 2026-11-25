@@ -95,16 +95,7 @@ local function link_cels(spr, layer, source, frames)
   app.range.frames = range
   -- The command skips a layer that is locked or sits in a locked group; the plain copy
   -- ignores locks, so unlock the whole chain for the command and restore it after.
-  local chain, node = {}, layer
-  while node ~= spr do
-    table.insert(chain, { node, node.isEditable })
-    node.isEditable = true
-    node = node.parent
-  end
-  local ok, err = pcall(app.command.LinkCels)
-  for _, entry in ipairs(chain) do
-    entry[1].isEditable = entry[2]
-  end
+  local ok, err = pcall(with_unlocked, layer, app.command.LinkCels)
   app.range:clear()
   if not ok then
     error(err, 0)

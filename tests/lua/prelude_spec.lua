@@ -82,6 +82,25 @@ local function run()
   local owned = own_cel(bg, back, back:cel(2), image_users(back))
   check("own_cel unlinks background cel", owned.image.id ~= back:cel(1).image.id
     and owned.frameNumber == 2)
+
+  local locked_bg = Sprite(2, 2)
+  app.sprite = locked_bg
+  app.layer = locked_bg.layers[1]
+  app.command.BackgroundFromLayer()
+  local locked_back = locked_bg.layers[1]
+  locked_bg:newEmptyFrame(2)
+  app.range.layers = { locked_back }
+  app.range.frames = { locked_bg.frames[1], locked_bg.frames[2] }
+  app.command.LinkCels()
+  app.range:clear()
+  locked_back.isEditable = false
+  local own_ok, own_err = pcall(own_cel, locked_bg, locked_back, locked_back:cel(2),
+    image_users(locked_back))
+  check("own_cel on locked background: " .. tostring(own_err), own_ok)
+  check("locked background cel unlinked",
+    locked_back:cel(1).image.id ~= locked_back:cel(2).image.id)
+  check("background lock restored", not locked_back.isEditable)
+  check("range cleared after unlink", app.range.isEmpty)
   check("layer arg on normal layer", color_value(indexed, { 0, 0, 0, 0 }, indexed.layers[1]) == 0)
 
   local fresh_indexed = Sprite(2, 2, ColorMode.INDEXED)
