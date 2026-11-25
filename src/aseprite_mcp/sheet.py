@@ -74,7 +74,7 @@ def plan(w: int, h: int, count: int, scale: int | None, margin: tuple[int, int] 
                 if chosen.size[1] > wide:
                     wide, side = chosen.size[1], "tall"
                 smaller.notes.append(
-                    f"scale {asked} would make the image {wide} px {side}; reduced to {s}"
+                    f"requested scale {asked} would make the image {wide} px {side}; reduced to {s}"
                 )
             return smaller
 
@@ -82,9 +82,11 @@ def plan(w: int, h: int, count: int, scale: int | None, margin: tuple[int, int] 
     while max(layout(1, k).size) > MAX_SIDE:
         k += 1
     shrunk = layout(1, k)
+    if asked is not None:
+        shrunk.notes.append(f"requested scale {asked} does not fit {MAX_SIDE} px; reduced")
     shrunk.notes.append(
-        f"shown at 1/{k} size (every {k}th pixel) to stay within {MAX_SIDE} px; "
-        "pass a region or fewer frames to see every pixel"
+        f"shown at 1/{k} size (one pixel out of {k} in each direction) to stay within "
+        f"{MAX_SIDE} px; pass a region or fewer frames to see every pixel"
     )
     return shrunk
 

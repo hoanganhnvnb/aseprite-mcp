@@ -9,6 +9,7 @@ from PIL import Image
 
 from aseprite_mcp import ops, server
 from aseprite_mcp.errors import ToolError
+from aseprite_mcp.tools import read
 
 RED = "#ff0000"
 BLUE = "#0000ff"
@@ -273,6 +274,7 @@ async def test_read_tools_do_not_save(call, tmp_path: Path):
 
     await call("read_pixels", path="a.aseprite", rect=rect(0, 0, 4, 4))
     await call("get_bounds", path="a.aseprite")
+    await call("compare_frames", path="a.aseprite", frame_a=1, frame_b=1)
     await call("get_color_stats", path="a.aseprite")
     await call("find_stray_pixels", path="a.aseprite")
     await view()
@@ -505,6 +507,30 @@ async def test_get_bounds_per_frame_and_overall(call):
     }
 
 
+async def test_get_bounds_over_many_frames(call):
+    await new_sprite(call, 256, 256)
+    await call("add_frames", path="a.aseprite", count=63)
+    await put(call, (10, 20, RED))
+    await put(call, (200, 100, RED), frame=64)
+
+    result = await call("get_bounds", path="a.aseprite")
+
+    assert len(result["frames"]) == 64
+    assert result["frames"][1] == {"frame": 2, "bounds": None}
+    assert result["frames"][63] == {"frame": 64, "bounds": {"x": 200, "y": 100, "w": 1, "h": 1}}
+    assert result["bounds"] == {"x": 10, "y": 20, "w": 191, "h": 81}
+
+
+async def test_get_bounds_of_a_layer_frame_without_a_cel(call):
+    await new_sprite(call, 4, 4)
+    await call("add_frames", path="a.aseprite")
+    await put(call, (1, 1, RED))
+
+    result = await call("get_bounds", path="a.aseprite", layer="Layer 1")
+
+    assert result["frames"][1] == {"frame": 2, "bounds": None}
+
+
 async def test_get_bounds_empty_sprite(call):
     await new_sprite(call, 4, 4)
 
@@ -561,7 +587,25 @@ async def test_get_color_stats_top_limits_the_list(call):
     result = await call("get_color_stats", path="a.aseprite", top=1)
 
     assert result["unique"] == 2
-    assert result["colors"] == [{"color": "#0000ff", "count": 2, "percent": 66.67}]
+    assert result["colors"] == [{"color": "#0000ff", "count": 2, "percent": 66.6667}]
+
+
+async def test_get_color_stats_rare_colour_is_not_rounded_away(call):
+    await new_sprite(call, 200, 200, background="#ffffff")
+    await put(call, (0, 0, RED))
+
+    result = await call("get_color_stats", path="a.aseprite")
+
+    assert result["colors"][1] == {"color": "#ff0000", "count": 1, "percent": 0.0025}
+
+
+async def test_get_color_stats_refuses_too_many_colours(call, monkeypatch):
+    monkeypatch.setattr(read, "MAX_STAT_COLORS", 2)
+    await new_sprite(call, 3, 1)
+    await put(call, (0, 0, RED), (1, 0, BLUE), (2, 0, "#00ff00"))
+
+    with pytest.raises(ToolError, match="more than 2 different colours"):
+        await call("get_color_stats", path="a.aseprite")
 
 
 async def test_lint_detects_lone_pixel(call):

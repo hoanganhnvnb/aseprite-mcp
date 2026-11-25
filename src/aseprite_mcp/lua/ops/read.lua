@@ -43,8 +43,16 @@ local function draw_layer(img, spr, layer, frame, area)
 end
 
 -- `area` of one frame: the visible layers composited, or only `layer` when given.
-local function render(spr, frame, layer, area)
-  local img = rgb_image(area.width, area.height)
+-- Loops over frames pass `into`, an image of the area's size that is cleared and
+-- reused: Lua's collector does not see image memory, so a new canvas-sized image
+-- per frame piles up gigabytes before any is freed.
+local function render(spr, frame, layer, area, into)
+  local img = into
+  if img == nil then
+    img = rgb_image(area.width, area.height)
+  else
+    img:clear()
+  end
   if layer == nil then
     img:drawSprite(spr, frame, Point(-area.x, -area.y))
   else
@@ -98,10 +106,10 @@ end
 OPS.get_bounds = function(ctx, p)
   local spr = need_sprite(ctx)
   local layer = optional_layer(spr, p.layer)
-  local frames = {}
+  local frames, buffer = {}, rgb_image(spr.width, spr.height)
   local union
   for i, n in ipairs(frame_list(spr, p.frames)) do
-    local b = render(spr, n, layer, spr.bounds):shrinkBounds()
+    local b = render(spr, n, layer, spr.bounds, buffer):shrinkBounds()
     if b.isEmpty then
       frames[i] = { frame = n }
     else
@@ -166,7 +174,7 @@ OPS.get_color_stats = function(ctx, p)
   local frame = one_frame(spr, p.frame)
   local top = p.top or 16
   local img = render(spr, frame, nil, spr.bounds)
-  local counts, transparent = {}, 0
+  local counts, transparent, unique = {}, 0, 0
   -- Unpacking the RGBA bytes is faster than the pixel iterator and gives the same values.
   local bytes, unpack = img.bytes, string.unpack
   for i = 1, #bytes, 4 do
@@ -174,13 +182,22 @@ OPS.get_color_stats = function(ctx, p)
     if v >> 24 == 0 then
       transparent = transparent + 1
     else
-      counts[v] = (counts[v] or 0) + 1
+      local count = counts[v]
+      if count == nil then
+        unique = unique + 1
+        -- One table entry per colour: a photo-like canvas would take gigabytes.
+        if unique > p.max_unique then
+          fail(string.format("frame %d has more than %d different colours, too many to "
+            .. "count; extract_palette summarises such images", frame, p.max_unique))
+        end
+        count = 0
+      end
+      counts[v] = count + 1
     end
   end
   -- Keep only the best `top` entries, so a noisy image never sorts every colour.
-  local best, unique = {}, 0
+  local best = {}
   for v, count in pairs(counts) do
-    unique = unique + 1
     local entry = { v, count }
     if #best < top or ranks_before(entry, best[#best]) then
       local i = #best < top and #best + 1 or #best
@@ -346,9 +363,10 @@ OPS.render_frames = function(ctx, p)
     fail(string.format("rendering %d frames of %dx%d px is too much for one view; "
       .. "pass a region or fewer frames", count, area.width, area.height))
   end
+  local buffer = rgb_image(area.width, area.height)
   for n = 1, #spr.frames do
     if wanted[n] then
-      render(spr, n, layer, area):saveAs(app.fs.joinPath(p.dir, n .. ".png"))
+      render(spr, n, layer, area, buffer):saveAs(app.fs.joinPath(p.dir, n .. ".png"))
       table.insert(rendered, n)
     end
   end

@@ -91,7 +91,7 @@ def test_sheet_reduces_a_scale_over_the_cap():
 
     assert layout.scale == 3
     assert layout.size == (1800, 30)
-    assert layout.notes == ["scale 8 would make the image 4800 px wide; reduced to 3"]
+    assert layout.notes == ["requested scale 8 would make the image 4800 px wide; reduced to 3"]
 
 
 def test_sheet_shrinks_when_scale_one_is_too_big():
@@ -100,6 +100,14 @@ def test_sheet_shrinks_when_scale_one_is_too_big():
     assert (layout.scale, layout.shrink) == (1, 2)
     assert layout.size == (2048, 15)
     assert "1/2" in layout.notes[0]
+
+
+def test_sheet_says_a_requested_scale_was_dropped_when_shrinking():
+    layout = sheet.plan(4096, 30, count=1, scale=4)
+
+    assert layout.shrink == 2
+    assert layout.notes[0] == "requested scale 4 does not fit 2048 px; reduced"
+    assert "one pixel out of 2 in each direction" in layout.notes[1]
 
 
 def test_sheet_lays_frames_out_in_a_square_grid():

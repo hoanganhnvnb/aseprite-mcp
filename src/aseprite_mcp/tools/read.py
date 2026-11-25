@@ -20,6 +20,9 @@ from ._registry import SpritePath, op_tool
 MAX_VIEW_FRAMES = 64
 # Pixels rendered for one view_sprite call, onion-skin frames included.
 MAX_VIEW_PIXELS = 4096 * 4096
+# get_color_stats keeps one entry per colour; past this it stops instead of using
+# gigabytes on a photo-like canvas.
+MAX_STAT_COLORS = 1 << 20
 
 ReadLayer = Annotated[
     str | None,
@@ -86,7 +89,9 @@ def read_pixels(
     """Read the pixels in rect; parts outside the canvas read as transparent.
 
     rows: one character per pixel with a legend of character -> colour, '.' for
-    transparent; x, y, rows and legend can be passed to draw_ascii as they are.
+    transparent; x, y, rows and legend can be passed to draw_ascii as they are when
+    the rect is at most 256 pixels wide and tall and the legend has 1 to 256 keys
+    (draw_ascii refuses an empty legend, so an all-transparent read cannot go back).
     hex: rows of space-separated '#rrggbb'/'#rrggbbaa', '.' for transparent.
     json: pixels as a list of rows of colours or 'transparent'.
     Without layer, the visible layers are composited (layer opacity and blend modes
@@ -166,7 +171,7 @@ def _stats_result(result: dict[str, Any], _: dict[str, Any]) -> dict[str, Any]:
         "transparent": result["transparent"],
         "unique": result["unique"],
         "colors": [
-            {"color": pixel_hex(value), "count": count, "percent": round(100 * count / counted, 2)}
+            {"color": pixel_hex(value), "count": count, "percent": round(100 * count / counted, 4)}
             for value, count in result["colors"]
         ],
     }
@@ -180,9 +185,11 @@ def get_color_stats(
 
     Colours are told apart by their full RGBA, so the same RGB at another alpha is a
     separate entry. Fully transparent pixels are only counted in transparent; unique
-    and percent cover the other pixels. Ties are ordered by red, green, blue, then alpha.
+    and percent cover the other pixels; percent has 4 decimals. Ties are ordered by red,
+    green, blue, then alpha. A frame with more than 1048576 different colours is
+    refused (use extract_palette for such images).
     """
-    return {"frame": frame, "top": top}
+    return {"frame": frame, "top": top, "max_unique": MAX_STAT_COLORS}
 
 
 def _stray_result(result: dict[str, Any], _: dict[str, Any]) -> dict[str, Any]:
