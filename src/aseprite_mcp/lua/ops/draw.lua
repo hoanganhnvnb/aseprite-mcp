@@ -606,6 +606,13 @@ OPS.draw_runs = function(ctx, p)
   return result
 end
 
+-- Text is rendered in Python and arrives as draw_runs params plus its box size.
+OPS.draw_text = function(ctx, p)
+  local result = OPS.draw_runs(ctx, p)
+  result.width, result.height = p.width, p.height
+  return result
+end
+
 -- Returns pen(color): a function from a stored value to the value to store, cached
 -- per colour so blenders and palette lookups are shared.
 local function pens(t, blend)
