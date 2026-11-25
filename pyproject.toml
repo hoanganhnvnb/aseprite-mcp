@@ -22,7 +22,7 @@ classifiers = [
     "Topic :: Multimedia :: Graphics :: Editors :: Raster-Based",
 ]
 dependencies = [
-    "mcp>=1.6,<2",
+    "mcp>=1.10,<2",
     "pydantic>=2.6",
     "pillow>=10.1",
 ]
