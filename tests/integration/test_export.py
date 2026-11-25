@@ -9,14 +9,14 @@ from PIL import Image
 
 from aseprite_mcp import server
 from aseprite_mcp.errors import ToolError
+from helpers import sprite_maker
 
 RED = "#ff0000"
 GREEN = "#00ff00"
 BLUE = "#0000ff"
 
 
-async def new_sprite(call, w: int = 4, h: int = 3, name: str = "a.aseprite", **args) -> None:
-    await call("create_sprite", path=name, width=w, height=h, **args)
+new_sprite = sprite_maker(4, 3)
 
 
 async def put(call, *pixels: tuple[int, int, str], name: str = "a.aseprite", **args) -> None:

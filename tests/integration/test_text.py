@@ -7,14 +7,14 @@ import pytest
 
 from aseprite_mcp import fonts, ops
 from aseprite_mcp.errors import ToolError
+from helpers import sprite_maker
 
 RED = [255, 0, 0, 255]
 BLACK = [0, 0, 0, 255]
 CLEAR = [0, 0, 0, 0]
 
 
-async def new_sprite(call, w: int = 32, h: int = 24, **args) -> None:
-    await call("create_sprite", path="a.aseprite", width=w, height=h, **args)
+new_sprite = sprite_maker(32, 24)
 
 
 async def canvas(pixels, path: Path, w: int, h: int, **args) -> dict:

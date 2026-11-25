@@ -12,6 +12,7 @@ import pytest
 from aseprite_mcp.config import Settings
 from aseprite_mcp.errors import AsepriteError, ToolError
 from aseprite_mcp.runner import _lock_key, _taskkill, run_script
+from helpers import make_settings
 
 FAKE = Path(__file__).parent.parent / "fake_aseprite.py"
 SCRIPT = Path("unused.lua")
@@ -32,15 +33,8 @@ def _wrapper(directory: Path) -> Path:
 def settings(tmp_path: Path) -> Settings:
     bin_dir = tmp_path / "bin"
     bin_dir.mkdir()
-    return Settings(
-        aseprite=str(_wrapper(bin_dir)),
-        root=tmp_path,
-        sandbox=False,
-        timeout=20.0,
-        max_procs=4,
-        allow_lua=False,
-        max_read_pixels=65536,
-    )
+    settings = make_settings(tmp_path, aseprite=str(_wrapper(bin_dir)))
+    return replace(settings, timeout=20.0, max_procs=4)
 
 
 def _events(log: Path) -> dict[str, float]:

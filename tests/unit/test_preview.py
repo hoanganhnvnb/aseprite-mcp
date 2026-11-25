@@ -10,9 +10,9 @@ from urllib.parse import urlsplit
 import pytest
 
 from aseprite_mcp import server
-from aseprite_mcp.config import Settings
 from aseprite_mcp.errors import ToolError
 from aseprite_mcp.preview import Preview
+from helpers import make_settings
 
 
 @pytest.fixture
@@ -229,18 +229,6 @@ def test_preview_restarts_after_stop(preview, site):
 
     assert started
     assert get(url + "hero.gif") == b"GIF89a"
-
-
-def make_settings(root: Path, sandbox: bool) -> Settings:
-    return Settings(
-        aseprite=None,
-        root=root,
-        sandbox=sandbox,
-        timeout=60.0,
-        max_procs=1,
-        allow_lua=False,
-        max_read_pixels=65536,
-    )
 
 
 @pytest.fixture

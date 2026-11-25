@@ -10,13 +10,13 @@ from PIL import Image
 from aseprite_mcp import ops, server
 from aseprite_mcp.errors import ToolError
 from aseprite_mcp.tools import read
+from helpers import rect, sprite_maker
 
 RED = "#ff0000"
 BLUE = "#0000ff"
 
 
-async def new_sprite(call, w: int = 4, h: int = 4, **args) -> None:
-    await call("create_sprite", path="a.aseprite", width=w, height=h, **args)
+new_sprite = sprite_maker(4, 4)
 
 
 async def put(call, *pixels: tuple[int, int, str], **args) -> None:
@@ -26,10 +26,6 @@ async def put(call, *pixels: tuple[int, int, str], **args) -> None:
         pixels=[{"x": x, "y": y, "color": c} for x, y, c in pixels],
         **args,
     )
-
-
-def rect(x: int, y: int, w: int, h: int) -> dict:
-    return {"x": x, "y": y, "w": w, "h": h}
 
 
 async def view(**args) -> tuple[str, Image.Image]:

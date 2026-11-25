@@ -4,6 +4,7 @@ import pytest
 
 from aseprite_mcp import ops
 from aseprite_mcp.errors import ToolError
+from helpers import rect, sprite_maker
 
 RED = [255, 0, 0, 255]
 GREEN = [0, 255, 0, 255]
@@ -11,12 +12,7 @@ BLUE = [0, 0, 255, 255]
 CLEAR = [0, 0, 0, 0]
 
 
-async def new_sprite(call, w: int = 8, h: int = 8, **args) -> None:
-    await call("create_sprite", path="a.aseprite", width=w, height=h, **args)
-
-
-def rect(x: int, y: int, w: int, h: int) -> dict:
-    return {"x": x, "y": y, "w": w, "h": h}
+new_sprite = sprite_maker(8, 8)
 
 
 async def picture(pixels, path: Path, w: int, h: int, letters: dict) -> list[str]:
@@ -549,7 +545,7 @@ async def test_isometric_box_without_height_is_only_the_top(call, grid, tmp_path
     assert await grid(tmp_path / "a.aseprite") == ["..##..", "####..", "##....", "......"]
 
 
-async def test_part_b_tools_refuse_locked_layer(call, locks, tmp_path: Path):
+async def test_pattern_and_shape_tools_refuse_locked_layer(call, locks, tmp_path: Path):
     await new_sprite(call)
     await locks(tmp_path / "a.aseprite", lock=["Layer 1"])
     calls = [
@@ -567,7 +563,9 @@ async def test_part_b_tools_refuse_locked_layer(call, locks, tmp_path: Path):
             await call(name, path="a.aseprite", **args)
 
 
-async def test_part_b_tools_in_one_batch(call, pixels, tmp_path: Path, monkeypatch):
+async def test_gradient_pattern_ascii_and_box_in_one_batch(
+    call, pixels, tmp_path: Path, monkeypatch
+):
     await new_sprite(call, 8, 8)
     calls = []
     real_run_script = ops.run_script

@@ -1,23 +1,10 @@
 import sys
-from pathlib import Path
 
 import pytest
 
-from aseprite_mcp.config import Settings
 from aseprite_mcp.errors import ToolError
 from aseprite_mcp.paths import resolve_path
-
-
-def make_settings(root: Path, sandbox: bool = False) -> Settings:
-    return Settings(
-        aseprite=None,
-        root=root,
-        sandbox=sandbox,
-        timeout=60.0,
-        max_procs=1,
-        allow_lua=False,
-        max_read_pixels=65536,
-    )
+from helpers import make_settings
 
 
 def test_resolve_relative_against_root(tmp_path):

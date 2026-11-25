@@ -4,16 +4,14 @@ import pytest
 
 from aseprite_mcp import ops
 from aseprite_mcp.errors import ToolError
+from helpers import sprite_maker
 
 RED = [255, 0, 0, 255]
 BLUE = [0, 0, 255, 255]
 CLEAR = [0, 0, 0, 0]
 
 
-async def new_sprite(call, frames: int = 1, **args) -> None:
-    await call("create_sprite", path="a.aseprite", width=16, height=16, **args)
-    if frames > 1:
-        await call("add_frames", path="a.aseprite", count=frames - 1)
+new_sprite = sprite_maker(16, 16)
 
 
 async def fill_frames(call, pixels, path: Path, frames: int) -> None:

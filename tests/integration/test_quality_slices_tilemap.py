@@ -6,6 +6,7 @@ import pytest
 
 from aseprite_mcp import server
 from aseprite_mcp.errors import ToolError
+from helpers import rect
 
 RED = "#ff0000"
 BLUE = "#0000ff"
@@ -17,10 +18,6 @@ def op(tool: str, **args) -> dict:
 
 def dot(x: int, y: int, layer: str, frame: int = 1, color: str = RED) -> dict:
     return op("draw_pixels", pixels=[{"x": x, "y": y, "color": color}], layer=layer, frame=frame)
-
-
-def rect(x: int, y: int, w: int, h: int) -> dict:
-    return {"x": x, "y": y, "w": w, "h": h}
 
 
 async def setup(call, *entries: dict, name: str = "a.aseprite", **args) -> None:

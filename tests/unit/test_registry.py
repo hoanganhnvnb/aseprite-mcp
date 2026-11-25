@@ -225,14 +225,14 @@ async def test_fill_area_schema_has_no_blend():
     assert (props["tolerance"]["minimum"], props["tolerance"]["maximum"]) == (0, 255)
 
 
-def test_part_b_draw_tools_are_batchable_mutations():
+def test_gradient_pattern_ascii_and_box_are_batchable_edits():
     assert BATCHABLE["draw_gradient"][:2] == ("draw_gradient", True)
     assert BATCHABLE["fill_pattern"][:2] == ("fill_pattern", True)
     assert BATCHABLE["draw_ascii"][:2] == ("draw_runs", True)
     assert BATCHABLE["draw_isometric_box"][:2] == ("draw_runs", True)
 
 
-async def test_part_b_draw_tools_required_params():
+async def test_gradient_pattern_ascii_and_box_required_params():
     required = {
         "draw_gradient": ["path", "rect", "colors"],
         "fill_pattern": ["path", "rect", "color_a", "color_b", "density"],
@@ -363,3 +363,10 @@ async def test_set_tiles_schema_limits_cells():
     tiles = (await _schema("set_tiles"))["properties"]["tiles"]
 
     assert tiles["maxItems"] == 4096
+
+
+async def test_save_copy_refuses_output_equal_to_sprite(sandboxed: Path):
+    with pytest.raises(ToolError, match="output must be a different file than the sprite"):
+        await mcp.call_tool(
+            "save_copy", {"path": "s.aseprite", "output": "./s.aseprite", "overwrite": True}
+        )

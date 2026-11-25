@@ -7,9 +7,9 @@ import pytest
 from PIL import ImageFont
 
 from aseprite_mcp import fonts
-from aseprite_mcp.config import Settings
 from aseprite_mcp.errors import ToolError
 from aseprite_mcp.fonts import FontEntry, find_font, font_dirs, load_font, render_text, scan_fonts
+from helpers import make_settings
 
 WHITE = (255, 255, 255, 255)
 RED = (255, 0, 0, 255)
@@ -21,18 +21,6 @@ def some_font() -> FontEntry:
     if not found:
         pytest.skip("no TrueType/OpenType font installed")
     return found[0]
-
-
-def settings(root: Path, sandbox: bool) -> Settings:
-    return Settings(
-        aseprite=None,
-        root=root,
-        sandbox=sandbox,
-        timeout=60.0,
-        max_procs=1,
-        allow_lua=False,
-        max_read_pixels=65536,
-    )
 
 
 def entry(family: str, style: str, name: str) -> FontEntry:
@@ -188,7 +176,7 @@ def test_find_font_by_path_respects_sandbox(tmp_path):
     outside = tmp_path / f"outside{real.path.suffix}"
     shutil.copy(real.path, inside)
     shutil.copy(real.path, outside)
-    sandboxed = settings(root, sandbox=True)
+    sandboxed = make_settings(root, sandbox=True)
 
     assert find_font(str(inside), [], sandboxed).path == inside
     with pytest.raises(ToolError, match="outside the allowed root"):
@@ -200,7 +188,7 @@ def test_find_font_by_path_rejects_other_extensions(tmp_path):
     picture.write_bytes(b"x")
 
     with pytest.raises(ToolError, match="not a font file"):
-        find_font(str(picture), [], settings(tmp_path, sandbox=False))
+        find_font(str(picture), [], make_settings(tmp_path, sandbox=False))
 
 
 def test_render_text_without_antialias_has_only_two_alpha_values():

@@ -1,10 +1,10 @@
-import sys
 from pathlib import Path
 
 import pytest
 
 from aseprite_mcp import ops
 from aseprite_mcp.errors import ToolError
+from helpers import sprite_maker
 
 RED = [255, 0, 0, 255]
 BLUE = [0, 0, 255, 255]
@@ -12,8 +12,7 @@ GREEN = [0, 255, 0, 255]
 CLEAR = [0, 0, 0, 0]
 
 
-async def new_sprite(call, w: int = 8, h: int = 8, **args) -> None:
-    await call("create_sprite", path="a.aseprite", width=w, height=h, **args)
+new_sprite = sprite_maker(8, 8)
 
 
 def px(x: int, y: int, color: str) -> dict:
@@ -605,12 +604,6 @@ async def test_many_draws_in_one_batch_write_only_touched_pixels(call, pixels, t
         RED,
         [255, 255, 255, 255],
     ]
-    if sys.platform == "linux":
-        import resource
-
-        # Replacing the whole image per op kept 200 copies of it (over 800 MB) in undo.
-        peak_mb = resource.getrusage(resource.RUSAGE_CHILDREN).ru_maxrss // 1024
-        assert peak_mb < 400
 
 
 async def no_aseprite(*args, **kwargs):

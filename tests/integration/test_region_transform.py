@@ -4,6 +4,7 @@ import pytest
 
 from aseprite_mcp import ops
 from aseprite_mcp.errors import ToolError
+from helpers import rect, sprite_maker
 
 RED = [255, 0, 0, 255]
 BLUE = [0, 0, 255, 255]
@@ -12,12 +13,7 @@ WHITE = [255, 255, 255, 255]
 CLEAR = [0, 0, 0, 0]
 
 
-async def new_sprite(call, w: int = 8, h: int = 8, **args) -> None:
-    await call("create_sprite", path="a.aseprite", width=w, height=h, **args)
-
-
-def rect(x: int, y: int, w: int, h: int) -> dict:
-    return {"x": x, "y": y, "w": w, "h": h}
+new_sprite = sprite_maker(8, 8)
 
 
 async def trimmed(call, pixels, path: Path, *points: tuple[int, int]) -> None:
