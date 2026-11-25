@@ -1,3 +1,5 @@
+import inspect
+import warnings
 from pathlib import Path
 from typing import Any
 
@@ -7,7 +9,7 @@ from aseprite_mcp import server
 from aseprite_mcp.config import load_settings
 from aseprite_mcp.errors import ToolError
 from aseprite_mcp.server import mcp
-from aseprite_mcp.tools._registry import BATCHABLE, op_tool
+from aseprite_mcp.tools._registry import BATCHABLE, _args_model, op_tool
 
 
 async def _schema(name: str) -> dict:
@@ -275,3 +277,51 @@ async def test_draw_isometric_box_schema():
     assert (props["d"]["minimum"], props["d"]["maximum"]) == (1, 128)
     assert (props["h"]["minimum"], props["h"]["maximum"]) == (0, 256)
     assert "z" not in props
+
+
+def test_region_tools_are_batchable_mutations():
+    for name in ("move_region", "erase_region", "flip", "rotate"):
+        assert BATCHABLE[name][:2] == (name, True)
+
+
+async def test_region_tools_required_params():
+    required = {
+        "move_region": ["path", "layer", "rect", "dx", "dy"],
+        "erase_region": ["path", "layer", "rect"],
+        "flip": ["path", "axis"],
+        "rotate": ["path", "angle"],
+    }
+    for name, params in required.items():
+        assert (await _schema(name))["required"] == params
+
+
+async def test_move_region_schema():
+    props = (await _schema("move_region"))["properties"]
+
+    assert props["copy"]["default"] is False
+    assert props["blend"]["default"] is False
+    assert props["frame"]["default"] == 1
+    assert props["target_layer"]["default"] is None
+
+
+async def test_flip_and_rotate_schema():
+    flip = (await _schema("flip"))["properties"]
+    rotate = (await _schema("rotate"))["properties"]
+
+    assert flip["axis"]["enum"] == ["horizontal", "vertical"]
+    assert rotate["angle"]["enum"] == [90, 180, 270]
+    assert flip["frames"]["default"] == rotate["frames"]["default"] == "all"
+    assert flip["layer"]["default"] is rotate["layer"]["default"] is None
+
+
+def test_no_userwarning_for_copy_parameter():
+    builder = BATCHABLE["move_region"][2]
+
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+        model = _args_model("move_region", inspect.signature(builder, eval_str=True))
+        args = model.model_validate(
+            {"layer": "L", "rect": {"x": 0, "y": 0, "w": 1, "h": 1}, "dx": 1, "dy": 0, "copy": True}
+        )
+
+    assert args.copy is True

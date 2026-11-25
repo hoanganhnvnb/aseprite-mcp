@@ -1,6 +1,7 @@
 import functools
 import inspect
 import os
+import warnings
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
@@ -37,11 +38,17 @@ def _args_model(name: str, signature: inspect.Signature) -> type[BaseModel]:
         annotation = Any if param.annotation is param.empty else param.annotation
         default = ... if param.default is param.empty else param.default
         fields[param.name] = (annotation, default)
-    return create_model(
-        f"{name}_args",
-        __config__=ConfigDict(extra="forbid", arbitrary_types_allowed=True),
-        **fields,
-    )
+    # Tool parameters may share a name with a BaseModel method (move_region's `copy`);
+    # the field wins on instances, which is all the batch validation needs.
+    with warnings.catch_warnings():
+        warnings.filterwarnings(
+            "ignore", message=r'Field name ".*" in ".*" shadows an attribute', category=UserWarning
+        )
+        return create_model(
+            f"{name}_args",
+            __config__=ConfigDict(extra="forbid", arbitrary_types_allowed=True),
+            **fields,
+        )
 
 
 _EXTRA: dict[str, _Extra] = {}

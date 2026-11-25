@@ -449,6 +449,55 @@ function own_cel(spr, layer, cel, users)
   return put_cel(spr, layer, cel.frameNumber, cel.image:clone(), cel.position, cel_props(cel))
 end
 
+-- The cels of `layer` in `frames`, each image once, plus the number of frames without
+-- a cel. A cel linked only to frames in the list is returned once, so changing it
+-- changes all of them; one also linked to frames outside the list gets its own copy
+-- per listed frame, so the other frames keep their pixels.
+function cels_to_change(spr, layer, frames)
+  local users = image_users(layer)
+  local asked, missing = {}, 0
+  for _, n in ipairs(frames) do
+    local cel = layer:cel(n)
+    if cel == nil then
+      missing = missing + 1
+    else
+      local id = cel.image.id
+      asked[id] = (asked[id] or 0) + 1
+    end
+  end
+  local shared = {}
+  for id, count in pairs(asked) do
+    shared[id] = count == users[id]
+  end
+  local out, seen = {}, {}
+  for _, n in ipairs(frames) do
+    local cel = layer:cel(n)
+    if cel ~= nil then
+      local id = cel.image.id
+      if not shared[id] then
+        table.insert(out, own_cel(spr, layer, cel, users))
+      elseif not seen[id] then
+        seen[id] = true
+        table.insert(out, cel)
+      end
+    end
+  end
+  return out, missing
+end
+
+-- A layer that holds plain pixels: groups and tilemaps are refused.
+function image_layer(spr, name)
+  local layer = get_layer(spr, name)
+  local path = layer_path(layer)
+  if layer.isGroup then
+    fail("'" .. path .. "' is a group; name one of its layers")
+  end
+  if layer.isTilemap then
+    fail("'" .. path .. "' is a tilemap layer; only image layers can be changed this way")
+  end
+  return layer, path
+end
+
 -- Makes the cel at `to` an independent copy of the one at `from`, or removes it when
 -- `from` has no cel.
 function copy_cel(spr, layer, from, to)
