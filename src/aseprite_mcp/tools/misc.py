@@ -1,10 +1,17 @@
 from typing import Annotated, Any
 
+from mcp.server.fastmcp import FastMCP
 from pydantic import BaseModel, Field
 
 from .. import server
+from ..config import Settings
+from ..errors import ToolError
+from ..guide import GUIDES, Topic
+from ..ops import Op, run_ops
 from ..paths import resolve_path
 from ._registry import SpritePath, run_batch
+
+MAX_SCRIPT_BYTES = 200 * 1024
 
 
 class BatchItem(BaseModel):
@@ -26,3 +33,63 @@ async def batch(
     """
     target = resolve_path(path, server.get_settings(), must_exist=True)
     return await run_batch(target, [(item.tool, item.args) for item in ops])
+
+
+@server.mcp.tool()
+def pixel_art_guide(topic: Topic = "basics") -> str:
+    """Short practical notes on drawing or animating pixel art with this server's tools.
+
+    Topics: basics, animation, idle, walk, attack, effects.
+    """
+    return GUIDES[topic]
+
+
+@server.mcp.prompt(name="pixel_art_guide")
+def pixel_art_guide_prompt(topic: Topic = "basics") -> str:
+    """Pixel art tips for one topic: basics, animation, idle, walk, attack or effects."""
+    return GUIDES[topic]
+
+
+async def run_lua(
+    script: Annotated[str, Field(description="Lua source run inside Aseprite")],
+    path: Annotated[
+        str | None,
+        Field(description="Sprite to open first; relative paths resolve against the root"),
+    ] = None,
+    save: Annotated[bool, Field(description="Save the sprite when the script succeeds")] = False,
+) -> dict[str, Any]:
+    """Run a Lua script with Aseprite's scripting API.
+
+    The code is unrestricted: it can read and write any file and start programs
+    (io, os.execute). This tool exists only because the server was started with
+    ASEPRITE_MCP_ALLOW_LUA=1; use it only in trusted setups.
+
+    With a path, the sprite is open as the global `sprite` (also app.sprite).
+    Changes are discarded unless save=true, which saves the sprite once the script
+    succeeds; on any error nothing is saved. print() output is returned in `output`
+    (up to 64 KB, `truncated` tells if more was cut), and the script's return value
+    in `result` (tables become JSON). Relative paths inside the script are not
+    resolved against the root. Prefer the dedicated tools when one fits.
+    """
+    if len(script.encode("utf-8")) > MAX_SCRIPT_BYTES:
+        raise ToolError(f"The script is too large (limit {MAX_SCRIPT_BYTES // 1024} KB)")
+    if save and path is None:
+        raise ToolError("save=true needs a path to the sprite to save")
+    settings = server.get_settings()
+    target = resolve_path(path, settings, must_exist=True) if path is not None else None
+    op = Op("run_lua", {"script": script}, mutates=save, label="run_lua")
+    [result] = await run_ops(target, [op], settings=settings)
+    return {
+        "output": result.get("output", ""),
+        "truncated": result.get("truncated", False),
+        "result": result.get("result"),
+        "saved": save,
+    }
+
+
+def add_lua_tool(app: FastMCP, settings: Settings) -> bool:
+    """Register run_lua on app when the settings allow it; sandbox mode never does."""
+    if not settings.allow_lua or settings.sandbox:
+        return False
+    app.add_tool(run_lua)
+    return True
