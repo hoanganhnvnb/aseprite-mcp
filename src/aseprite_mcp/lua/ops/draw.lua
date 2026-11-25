@@ -146,11 +146,12 @@ local function blender(spr, layer, color)
   end
 end
 
--- Paints the spans with color (an {r, g, b, a} list) and returns the pixel count.
+-- Paints the spans with color (an {r, g, b, a} list) and returns the pixel count,
+-- which includes pixels a blended transparent colour leaves as they were.
 local function paint_spans(t, s, color, blend)
   local rows, count, bounds = merged(s)
   if count == 0 or (blend and color[4] == 0) then
-    return 0
+    return count
   end
   local spr, layer = t.spr, t.layer
   local cel = writable(t, bounds)

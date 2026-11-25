@@ -481,6 +481,38 @@ async def test_blend_true_mixes_alpha(call, pixels, tmp_path: Path):
     assert await pixels(path, read=[(0, 0)]) == [[128, 0, 127, 255]]
 
 
+async def test_transparent_rect_with_blend_counts_covered_pixels(call, pixels, tmp_path: Path):
+    path = tmp_path / "a.aseprite"
+    await new_sprite(call)
+    await pixels(path, put=[(0, 0, *BLUE)])
+
+    result = await call(
+        "draw_rect",
+        path="a.aseprite",
+        rect={"x": 0, "y": 0, "w": 4, "h": 4},
+        color="transparent",
+        fill=True,
+        blend=True,
+    )
+
+    assert result["painted"] == 16
+    assert await pixels(path, read=[(0, 0)]) == [BLUE]
+
+
+async def test_transparent_line_with_blend_counts_covered_pixels(call, tmp_path: Path):
+    await new_sprite(call)
+
+    result = await call(
+        "draw_line",
+        path="a.aseprite",
+        points=[{"x": 0, "y": 0}, {"x": 2, "y": 0}],
+        color="transparent",
+        blend=True,
+    )
+
+    assert result["painted"] == 3
+
+
 async def test_blend_false_overwrites(call, pixels, tmp_path: Path):
     path = tmp_path / "a.aseprite"
     await new_sprite(call)

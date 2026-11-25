@@ -154,6 +154,8 @@ numbered sequence. `save_copy` and `export` write flattened copies on purpose.
   and merging; `update_layer` can still rename, hide or unlock it. Whole-sprite
   changes (resize, crop, colour mode, flatten, flip and rotate without a layer)
   ignore locks, as in the editor.
+- `painted` in a drawing result counts the canvas pixels the op covered, including
+  any the colour left as they were (a transparent colour with `blend: true`).
 
 ## Tools
 
