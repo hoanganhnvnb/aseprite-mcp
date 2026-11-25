@@ -141,18 +141,29 @@ local function link_cels(spr, layer, source, frames)
     table.insert(range, spr.frames[n])
   end
   app.range.frames = range
-  -- The command skips locked layers; the plain copy above ignores the lock, so match it.
-  local editable = layer.isEditable
-  layer.isEditable = true
-  app.command.LinkCels()
-  layer.isEditable = editable
+  -- The command skips a layer that is locked or sits in a locked group; the plain copy
+  -- ignores locks, so unlock the whole chain for the command and restore it after.
+  local chain, node = {}, layer
+  while node ~= spr do
+    table.insert(chain, { node, node.isEditable })
+    node.isEditable = true
+    node = node.parent
+  end
+  local ok, err = pcall(app.command.LinkCels)
+  for _, entry in ipairs(chain) do
+    entry[1].isEditable = entry[2]
+  end
   app.range:clear()
+  if not ok then
+    error(err, 0)
+  end
   local image = layer:cel(source).image
   for _, n in ipairs(frames) do
     local cel = layer:cel(n)
     if cel == nil or cel.image ~= image then
-      fail(string.format("Aseprite did not link the cel of '%s' in frame %d",
-        layer_path(layer), n))
+      fail(string.format(
+        "Aseprite did not link the cel of '%s' in frame %d (the layer and its groups were "
+          .. "unlocked for linking); copy without link=true instead", layer_path(layer), n))
     end
   end
 end

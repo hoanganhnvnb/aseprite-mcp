@@ -12,6 +12,7 @@ from aseprite_mcp.runner import run_script
 MakeSprite = Callable[..., Awaitable[Path]]
 PIXELS_SCRIPT = Path(__file__).parent / "lua" / "pixels.lua"
 CELS_SCRIPT = Path(__file__).parent / "lua" / "cels.lua"
+LOCKS_SCRIPT = Path(__file__).parent / "lua" / "locks.lua"
 
 
 def pytest_collection_modifyitems(items: list[pytest.Item]) -> None:
@@ -111,5 +112,23 @@ def cels(ase_settings: Settings):
             save_to=path if update else None,
         )
         return result.data["cels"]
+
+    return run
+
+
+@pytest.fixture
+def locks(ase_settings: Settings):
+    """Locks the layers in `lock`, then returns the paths of every locked layer."""
+
+    async def run(path: Path, lock: Sequence[str] = ()) -> list[str]:
+        result = await run_script(
+            LOCKS_SCRIPT,
+            {"lock": list(lock)},
+            settings=ase_settings,
+            lock_paths=[path],
+            open_file=path,
+            save_to=path if lock else None,
+        )
+        return result.data["locked"]
 
     return run

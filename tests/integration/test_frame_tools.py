@@ -262,6 +262,32 @@ async def test_copy_frames_link_shares_image(call, pixels, cels, tmp_path: Path)
     assert await pixels(path, read=[(0, 0)], frame=3) == [RED]
 
 
+async def test_copy_frames_link_under_locked_group(call, pixels, cels, locks, tmp_path: Path):
+    path = tmp_path / "a.aseprite"
+    await new_sprite(call, frames=4)
+    await call("add_layer", path="a.aseprite", name="G", kind="group")
+    await call("add_layer", path="a.aseprite", name="C", parent="G")
+    await pixels(path, put=[(0, 0, *RED)], layer="G/C")
+    await locks(path, lock=["G"])
+
+    await call("copy_frames", path="a.aseprite", source=1, targets="2-4", link=True)
+
+    assert len({cel["image_id"] for cel in await cels(path, layer="G/C")}) == 1
+    assert await locks(path) == ["G"]
+
+
+async def test_copy_frames_link_keeps_layer_locked(call, pixels, cels, locks, tmp_path: Path):
+    path = tmp_path / "a.aseprite"
+    await new_sprite(call, frames=2)
+    await pixels(path, put=[(0, 0, *RED)])
+    await locks(path, lock=["Layer 1"])
+
+    await call("copy_frames", path="a.aseprite", source=1, targets="2", link=True)
+
+    assert len({cel["image_id"] for cel in await cels(path)}) == 1
+    assert await locks(path) == ["Layer 1"]
+
+
 async def test_copy_frames_on_indexed_sprite_keeps_indices(call, pixels, tmp_path: Path):
     path = tmp_path / "a.aseprite"
     await new_sprite(call, frames=2, color_mode="indexed")
