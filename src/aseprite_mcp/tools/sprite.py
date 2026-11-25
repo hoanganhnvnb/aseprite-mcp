@@ -8,7 +8,7 @@ from ..colors import parse_color
 from ..errors import ToolError
 from ..models import Color, Rect
 from ..ops import Op, run_ops
-from ..paths import resolve_path
+from ..paths import check_save_extension, resolve_path
 from ._registry import SpritePath, op_tool
 
 MAX_CANVAS = 4096
@@ -17,7 +17,7 @@ CanvasSize = Annotated[int, Field(ge=1, le=MAX_CANVAS)]
 ColorMode = Literal["rgb", "grayscale", "indexed"]
 
 
-def _check_new_file(path: str, overwrite: bool) -> Path:
+def _new_sprite_path(path: str, overwrite: bool) -> Path:
     target = resolve_path(path, server.get_settings(), must_exist=False)
     if target.is_dir():
         raise ToolError(f"{target} is a folder")
@@ -25,6 +25,7 @@ def _check_new_file(path: str, overwrite: bool) -> Path:
         raise ToolError(f"{target} already exists; pass overwrite=true to replace it")
     if not target.parent.is_dir():
         raise ToolError(f"Folder does not exist: {target.parent}")
+    check_save_extension(target)
     return target
 
 
@@ -42,7 +43,7 @@ async def create_sprite(
     The format follows the extension (.aseprite keeps layers and frames). The folder must
     already exist. Without a background the layer is transparent.
     """
-    target = _check_new_file(path, overwrite)
+    target = _new_sprite_path(path, overwrite)
     create: dict[str, Any] = {"width": width, "height": height, "color_mode": color_mode}
     if background is not None:
         create["background"] = list(parse_color(background))
@@ -66,7 +67,9 @@ def set_color_mode(mode: ColorMode) -> dict[str, Any]:
     """Convert the sprite to rgb, grayscale or indexed.
 
     Indexed uses the sprite's current palette without dithering; colours missing from
-    the palette map to the nearest entry.
+    the palette map to the nearest entry. Index 0 becomes the transparent colour: when
+    the palette is full, its least used entry is dropped to make room and reported in
+    dropped_palette_entries.
     """
     return {"mode": mode}
 
@@ -92,4 +95,5 @@ def save_copy(output: str, overwrite: bool = False) -> dict[str, Any]:
     The format follows the output extension (.aseprite, .png, .gif, ...); a multi-frame
     sprite needs .aseprite or .gif. The output folder must exist.
     """
-    return {"output": str(_check_new_file(output, overwrite))}
+    # The registry resolves output and applies overwrite (see op_tool's `writes`).
+    return {"output": output}

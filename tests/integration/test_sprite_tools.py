@@ -52,6 +52,20 @@ async def test_create_sprite_needs_existing_folder(call):
         await call("create_sprite", path="missing/a.aseprite", width=8, height=8)
 
 
+async def test_create_sprite_rejects_unknown_extension(call, tmp_path: Path):
+    with pytest.raises(ToolError, match=r"cannot save a\.xyz \('\.xyz'\)"):
+        await call("create_sprite", path="a.xyz", width=8, height=8)
+
+    assert list(tmp_path.iterdir()) == []
+
+
+async def test_create_sprite_needs_an_extension(call, tmp_path: Path):
+    with pytest.raises(ToolError, match="no extension"):
+        await call("create_sprite", path="sprite", width=8, height=8)
+
+    assert list(tmp_path.iterdir()) == []
+
+
 async def test_create_sprite_rejects_bad_background(call):
     with pytest.raises(ToolError, match="#RRGGBB"):
         await call("create_sprite", path="a.aseprite", width=8, height=8, background="red")
@@ -92,6 +106,19 @@ async def test_set_color_mode_to_indexed(call, pixels, tmp_path: Path):
         [172, 50, 50, 255],
         CLEAR,
     ]
+
+
+async def test_gray_to_indexed_keeps_black(call, pixels, tmp_path: Path):
+    path = tmp_path / "a.aseprite"
+    await call("create_sprite", path="a.aseprite", width=4, height=4, color_mode="grayscale")
+    await pixels(path, put=[(1, 1, 0, 0, 0, 255), (2, 2, 255, 255, 255, 255)])
+    assert (await call("get_sprite_info", path="a.aseprite"))["palette_size"] == 256
+
+    result = await call("set_color_mode", path="a.aseprite", mode="indexed")
+
+    assert len(result["dropped_palette_entries"]) == 1
+    assert (await call("get_sprite_info", path="a.aseprite"))["palette_size"] == 256
+    assert await pixels(path, read=[(1, 1), (2, 2)]) == [[0, 0, 0, 255], [255, 255, 255, 255]]
 
 
 async def test_resize_scales_content(call, pixels, tmp_path: Path):
@@ -152,6 +179,59 @@ async def test_save_copy_refuses_existing_output(call, tmp_path: Path):
         await call("save_copy", path="a.aseprite", output="copy.png")
 
     assert (tmp_path / "copy.png").read_bytes() == b"keep me"
+
+
+async def test_batch_save_copy_to_unknown_format_saves_nothing(call, tmp_path: Path):
+    await call("create_sprite", path="a.aseprite", width=4, height=4)
+    before = (tmp_path / "a.aseprite").read_bytes()
+
+    with pytest.raises(ToolError, match=r"op 2 \(save_copy\): Aseprite cannot save c\.xyz"):
+        await call(
+            "batch",
+            path="a.aseprite",
+            ops=[
+                {"tool": "resize_sprite", "args": {"width": 8, "height": 8}},
+                {"tool": "save_copy", "args": {"output": "c.xyz"}},
+            ],
+        )
+
+    assert (tmp_path / "a.aseprite").read_bytes() == before
+    assert [p.name for p in tmp_path.iterdir()] == ["a.aseprite"]
+
+
+async def test_batch_save_copy_failing_in_aseprite_saves_nothing(call, tmp_path: Path):
+    await call("create_sprite", path="a.aseprite", width=4, height=4)
+    before = (tmp_path / "a.aseprite").read_bytes()
+
+    # FLI needs an indexed sprite, so Aseprite writes nothing for an RGB one.
+    with pytest.raises(ToolError, match=r"op 2 \(save_copy\): Aseprite could not write a \.fli"):
+        await call(
+            "batch",
+            path="a.aseprite",
+            ops=[
+                {"tool": "resize_sprite", "args": {"width": 8, "height": 8}},
+                {"tool": "save_copy", "args": {"output": "c.fli"}},
+            ],
+        )
+
+    assert (tmp_path / "a.aseprite").read_bytes() == before
+    assert [p.name for p in tmp_path.iterdir()] == ["a.aseprite"]
+
+
+async def test_batch_rejects_two_ops_writing_the_same_file(call, tmp_path: Path):
+    await call("create_sprite", path="a.aseprite", width=4, height=4)
+
+    with pytest.raises(ToolError, match=r"op 1 \(save_copy\) and op 2 \(save_copy\) both write"):
+        await call(
+            "batch",
+            path="a.aseprite",
+            ops=[
+                {"tool": "save_copy", "args": {"output": "c.png"}},
+                {"tool": "save_copy", "args": {"output": "./c.png"}},
+            ],
+        )
+
+    assert [p.name for p in tmp_path.iterdir()] == ["a.aseprite"]
 
 
 async def test_batch_three_ops_one_process(call, monkeypatch: pytest.MonkeyPatch):

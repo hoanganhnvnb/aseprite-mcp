@@ -1,16 +1,17 @@
 import functools
 import inspect
+import os
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Annotated, Any
 
-from pydantic import Field, ValidationError, validate_call
+from pydantic import BaseModel, ConfigDict, Field, ValidationError, create_model
 
 from .. import server
 from ..errors import ToolError
 from ..ops import Op, output_file, run_ops
-from ..paths import resolve_path
+from ..paths import check_save_extension, resolve_path
 
 Builder = Callable[..., dict[str, Any]]
 
@@ -19,7 +20,7 @@ SpritePath = Annotated[
     Field(description="Sprite file. Relative paths resolve against the server root."),
 ]
 
-# tool name -> (op name, mutates, builder); the builder validates its arguments.
+# tool name -> (op name, mutates, builder)
 BATCHABLE: dict[str, tuple[str, bool, Builder]] = {}
 
 
@@ -27,6 +28,20 @@ BATCHABLE: dict[str, tuple[str, bool, Builder]] = {}
 class _Extra:
     path_arg: str
     writes: str | None
+    args_model: type[BaseModel]
+
+
+def _args_model(name: str, signature: inspect.Signature) -> type[BaseModel]:
+    fields: dict[str, Any] = {}
+    for param in signature.parameters.values():
+        annotation = Any if param.annotation is param.empty else param.annotation
+        default = ... if param.default is param.empty else param.default
+        fields[param.name] = (annotation, default)
+    return create_model(
+        f"{name}_args",
+        __config__=ConfigDict(extra="forbid", arbitrary_types_allowed=True),
+        **fields,
+    )
 
 
 _EXTRA: dict[str, _Extra] = {}
@@ -40,8 +55,10 @@ def op_tool(
     The decorated function receives the tool arguments except `path_arg` and returns
     the op params. The registered tool takes `path_arg` first, then the function's own
     parameters, so the schema comes from the function's signature and docstring.
-    `writes` names a param holding an absolute output path: the op writes to a
-    temporary file that replaces the output only when the whole run succeeds.
+    `writes` names a param holding an output path as the user gave it. The registry
+    resolves it like any path, checks the folder, the extension and the builder's
+    `overwrite` argument (False when it has none), and the op writes to a temporary
+    file that replaces the output only when the whole run succeeds.
     """
 
     def register(builder: Builder) -> Callable[..., Any]:
@@ -54,7 +71,7 @@ def op_tool(
         async def tool(**kwargs: Any) -> dict[str, Any]:
             settings = server.get_settings()
             path = resolve_path(kwargs.pop(path_arg), settings, must_exist=True)
-            built = make_op(name, builder(**kwargs), path)
+            built = make_op(name, builder(**kwargs), path, kwargs.get("overwrite", False))
             [result] = await run_ops(path, [built], settings=settings)
             return op_result(name, built, result)
 
@@ -66,22 +83,43 @@ def op_tool(
             return_annotation=dict[str, Any],
         )
         server.mcp.add_tool(tool, name=name)
-        BATCHABLE[name] = (op, mutates, validate_call(builder))
-        _EXTRA[name] = _Extra(path_arg, writes)
+        BATCHABLE[name] = (op, mutates, builder)
+        _EXTRA[name] = _Extra(path_arg, writes, _args_model(name, signature))
         return tool
 
     return register
 
 
-def make_op(tool: str, params: dict[str, Any], path: Path) -> Op:
+def _same_file(a: Path, b: Path) -> bool:
+    if os.path.normcase(a) == os.path.normcase(b):
+        return True
+    try:
+        return a.exists() and b.exists() and a.samefile(b)
+    except OSError:
+        return False
+
+
+def _output_path(key: str, value: Any, overwrite: bool, sprite: Path) -> Path:
+    final = resolve_path(str(value), server.get_settings(), must_exist=False)
+    if _same_file(final, sprite):
+        raise ToolError(f"{key} must be a different file than the sprite itself")
+    if final.is_dir():
+        raise ToolError(f"{final} is a folder")
+    if not final.parent.is_dir():
+        raise ToolError(f"Folder does not exist: {final.parent}")
+    check_save_extension(final)
+    if final.exists() and not overwrite:
+        raise ToolError(f"{final} already exists; pass overwrite=true to replace it")
+    return final
+
+
+def make_op(tool: str, params: dict[str, Any], path: Path, overwrite: bool = False) -> Op:
     op, mutates, _ = BATCHABLE[tool]
     params = dict(params)
     writes = []
     key = _EXTRA[tool].writes
     if key is not None:
-        tmp, final = output_file(Path(params[key]))
-        if final == path:
-            raise ToolError(f"{key} must be a different file than the sprite itself")
+        tmp, final = output_file(_output_path(key, params[key], overwrite, path))
         params[key] = str(tmp)
         writes.append((tmp, final))
     return Op(op, params, mutates, label=tool, writes=writes)
@@ -106,7 +144,9 @@ def batch_op(index: int, tool: str, args: dict[str, Any], path: Path) -> Op:
         )
     builder = BATCHABLE[tool][2]
     try:
-        return make_op(tool, builder(**args), path)
+        model = _EXTRA[tool].args_model.model_validate(args)
+        valid = {name: getattr(model, name) for name in type(model).model_fields}
+        return make_op(tool, builder(**valid), path, valid.get("overwrite", False))
     except ValidationError as e:
         problems = "; ".join(
             f"{'.'.join(str(part) for part in err['loc']) or 'args'}: {err['msg']}"
@@ -119,5 +159,16 @@ def batch_op(index: int, tool: str, args: dict[str, Any], path: Path) -> Op:
 
 async def run_batch(path: Path, entries: list[tuple[str, dict[str, Any]]]) -> list[dict[str, Any]]:
     built = [batch_op(i, tool, args, path) for i, (tool, args) in enumerate(entries, 1)]
+    seen: dict[str, int] = {}
+    for i, op in enumerate(built, 1):
+        for _, final in op.writes:
+            key = os.path.normcase(final)
+            if key in seen:
+                first = seen[key]
+                raise ToolError(
+                    f"op {first} ({entries[first - 1][0]}) and op {i} ({entries[i - 1][0]}) "
+                    f"both write {final}"
+                )
+            seen[key] = i
     results = await run_ops(path, built, settings=server.get_settings())
     return [op_result(tool, op, r) for (tool, _), op, r in zip(entries, built, results)]
