@@ -1,24 +1,47 @@
-import re
+import string
 from itertools import pairwise
 from typing import Literal
 
 RGBA = tuple[int, int, int, int]
 
-_HEX = re.compile(r"#([0-9a-fA-F]{6}|[0-9a-fA-F]{8})")
+_HEX_DIGITS = frozenset(string.hexdigits)
 
 
 def parse_color(s: str) -> RGBA:
     text = s.strip()
+    digits = text[1:]
+    if text[:1] == "#" and len(digits) in (6, 8) and _HEX_DIGITS.issuperset(digits):
+        value = int(digits, 16)
+        if len(digits) == 6:
+            return (value >> 16, (value >> 8) & 255, value & 255, 255)
+        return (value >> 24, (value >> 16) & 255, (value >> 8) & 255, value & 255)
     if text.lower() == "transparent":
         return (0, 0, 0, 0)
-    match = _HEX.fullmatch(text)
-    if match is None:
-        raise ValueError(f"Invalid color {s!r}: use '#RRGGBB', '#RRGGBBAA' or 'transparent'")
-    digits = match.group(1)
-    if len(digits) == 6:
-        digits += "ff"
-    r, g, b, a = (int(digits[i : i + 2], 16) for i in range(0, 8, 2))
-    return (r, g, b, a)
+    raise ValueError(f"Invalid color {s!r}: use '#RRGGBB', '#RRGGBBAA' or 'transparent'")
+
+
+class ColorText(str):
+    """A validated colour argument: the text as given, plus its RGBA value."""
+
+    rgba: RGBA
+
+
+def checked_color(text: str) -> ColorText:
+    color = ColorText(text)
+    color.rgba = parse_color(text)
+    return color
+
+
+def color_rgba(color: str) -> RGBA:
+    """The RGBA value of a colour, without parsing it again if it was validated."""
+    if isinstance(color, ColorText):
+        return color.rgba
+    return parse_color(color)
+
+
+def pack_rgba(rgba: RGBA) -> int:
+    r, g, b, a = rgba
+    return r << 24 | g << 16 | b << 8 | a
 
 
 def to_hex(r: int, g: int, b: int) -> str:

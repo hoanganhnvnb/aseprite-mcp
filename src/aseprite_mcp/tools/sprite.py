@@ -4,7 +4,7 @@ from typing import Annotated, Any, Literal
 from pydantic import Field
 
 from .. import server
-from ..colors import parse_color
+from ..colors import color_rgba
 from ..errors import ToolError
 from ..models import Color, Rect
 from ..ops import Op, run_ops
@@ -52,7 +52,7 @@ async def create_sprite(
     target = _new_sprite_path(path, overwrite)
     create: dict[str, Any] = {"width": width, "height": height, "color_mode": color_mode}
     if background is not None:
-        create["background"] = list(parse_color(background))
+        create["background"] = list(color_rgba(background))
     [info] = await run_ops(
         target,
         [Op("sprite_info", {}, mutates=False)],

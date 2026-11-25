@@ -347,16 +347,18 @@ local function shape_result(t, painted)
   return { layer = t.path, frame = t.frame, painted = painted }
 end
 
+-- p.pixels is an int_list string of x, y, packed RGBA triples.
 OPS.draw_pixels = function(ctx, p)
   local spr = need_sprite(ctx)
   local t = draw_target(spr, p)
   local w, h = spr.width, spr.height
+  local data = int_list(p.pixels)
   local inside, skipped = {}, 0
   local left, top, right, bottom = w, h, -1, -1
-  for _, px in ipairs(p.pixels) do
-    local x, y = px[1], px[2]
+  for i = 1, #data, 3 do
+    local x, y = data[i], data[i + 1]
     if x >= 0 and y >= 0 and x < w and y < h then
-      inside[#inside + 1] = px
+      inside[#inside + 1] = i
       left, right = math.min(left, x), math.max(right, x)
       top, bottom = math.min(top, y), math.max(bottom, y)
     else
@@ -372,14 +374,14 @@ OPS.draw_pixels = function(ctx, p)
   local img = cel.image
   local ox, oy = cel.position.x, cel.position.y
   local values = {}
-  for _, px in ipairs(inside) do
-    local key = ((px[3] * 256 + px[4]) * 256 + px[5]) * 256 + px[6]
-    local value = values[key]
+  for _, i in ipairs(inside) do
+    local packed = data[i + 2]
+    local value = values[packed]
     if value == nil then
-      value = color_value(spr, { px[3], px[4], px[5], px[6] }, t.layer)
-      values[key] = value
+      value = color_value(spr, unpack_rgba(packed), t.layer)
+      values[packed] = value
     end
-    img:clear(Rectangle(px[1] - ox, px[2] - oy, 1, 1), value)
+    img:clear(Rectangle(data[i] - ox, data[i + 1] - oy, 1, 1), value)
   end
   return result
 end
@@ -561,14 +563,16 @@ OPS.fill_area = function(ctx, p)
   return shape_result(t, paint_spans(t, s, p.color, false))
 end
 
--- Runs of pixels computed by the caller, each { colour index, y, x0, x1 }, never
--- overlapping. Runs are clipped to the canvas and painted one colour at a time.
+-- Runs of pixels computed by the caller, an int_list string of colour index, y, x0, x1
+-- quadruples, never overlapping. Runs are clipped to the canvas and painted one colour
+-- at a time.
 OPS.draw_runs = function(ctx, p)
   local spr = need_sprite(ctx)
   local t = draw_target(spr, p)
   local sets, inside, total = {}, 0, 0
-  for _, run in ipairs(p.runs) do
-    local i, y, l, r = run[1], run[2], run[3], run[4]
+  local runs = int_list(p.runs)
+  for k = 1, #runs, 4 do
+    local i, y, l, r = runs[k], runs[k + 1], runs[k + 2], runs[k + 3]
     total = total + r - l + 1
     l, r = math.max(l, 0), math.min(r, spr.width - 1)
     if y >= 0 and y < spr.height and l <= r then

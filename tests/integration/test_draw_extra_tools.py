@@ -303,6 +303,22 @@ async def test_draw_ascii_paints_legend_colours(call, pixels, tmp_path: Path):
     ]
 
 
+async def test_draw_ascii_clips_runs_left_of_canvas(call, pixels, tmp_path: Path):
+    await new_sprite(call, 4, 4)
+
+    result = await call(
+        "draw_ascii",
+        path="a.aseprite",
+        x=-2,
+        y=-1,
+        rows=["rrb", "rgb"],
+        legend={"r": "#ff0000", "g": "#00ff00", "b": "#0000ff"},
+    )
+
+    assert (result["painted"], result["skipped_outside"]) == (1, 5)
+    assert await pixels(tmp_path / "a.aseprite", read=[(0, 0), (1, 0)]) == [BLUE, CLEAR]
+
+
 async def test_draw_ascii_dot_and_space_are_transparent(call, pixels, tmp_path: Path):
     await new_sprite(call, 2, 2)
     await call("draw_rect", path="a.aseprite", rect=rect(0, 0, 2, 2), color="#0000ff", fill=True)

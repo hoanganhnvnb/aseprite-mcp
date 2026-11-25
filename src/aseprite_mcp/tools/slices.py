@@ -2,7 +2,7 @@ from typing import Annotated, Any
 
 from pydantic import Field
 
-from ..colors import parse_color
+from ..colors import color_rgba
 from ..models import Color, Point, Rect
 from ._registry import op_tool
 
@@ -59,7 +59,7 @@ def create_slice(
         "rect": rect.model_dump(),
         "center": center.model_dump() if center else None,
         "pivot": pivot.model_dump() if pivot else None,
-        "color": list(parse_color(color)) if color else None,
+        "color": list(color_rgba(color)) if color else None,
     }
 
 

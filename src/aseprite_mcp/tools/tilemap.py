@@ -91,7 +91,7 @@ def draw_tile(
     return {
         "layer": layer,
         "tile_index": tile_index,
-        "pixels": [[p.x, p.y, *colors.parse_color(p.color)] for p in pixels],
+        "pixels": [[p.x, p.y, *colors.color_rgba(p.color)] for p in pixels],
     }
 
 

@@ -3,7 +3,7 @@ from typing import Annotated, Any, Literal
 from pydantic import Field
 
 from .. import raster
-from ..colors import RGBA, parse_color
+from ..colors import RGBA, color_rgba, pack_rgba
 from ..models import Color, Coord, Pixel, Point, Rect
 from ._registry import op_tool
 
@@ -34,7 +34,7 @@ Top = Annotated[Coord, Field(description="Canvas y of the top-left pixel")]
 
 
 def rgba(color: str) -> list[int]:
-    return list(parse_color(color))
+    return list(color_rgba(color))
 
 
 def target(layer: str, frame: int, create_cel: bool) -> dict[str, Any]:
@@ -65,7 +65,7 @@ def draw_pixels(
     """
     return {
         **target(layer, frame, create_cel),
-        "pixels": [[p.x, p.y, *rgba(p.color)] for p in pixels],
+        "pixels": " ".join(f"{p.x} {p.y} {pack_rgba(color_rgba(p.color))}" for p in pixels),
     }
 
 
@@ -293,16 +293,16 @@ def fill_pattern(
 def runs_op(
     shapes: list[tuple[RGBA, raster.Rows]], layer: str, frame: int, create_cel: bool, blend: bool
 ) -> dict[str, Any]:
-    """Params for the draw_runs op: one colour per distinct RGBA, runs as [i, y, x0, x1]."""
+    """Params for the draw_runs op: one colour per distinct RGBA, runs as "i y x0 x1 ..."."""
     index: dict[RGBA, int] = {}
     runs = []
     for color, rows in shapes:
         i = index.setdefault(color, len(index) + 1)
-        runs += [[i, y, x0, x1] for y, spans in rows.items() for x0, x1 in spans]
+        runs += [f"{i} {y} {x0} {x1}" for y, spans in rows.items() for x0, x1 in spans]
     return {
         **target(layer, frame, create_cel),
         "colors": [list(color) for color in index],
-        "runs": runs,
+        "runs": " ".join(runs),
         "blend": blend,
     }
 
@@ -343,12 +343,12 @@ def draw_ascii(
                 "'.' and ' ' always leave the pixel untouched; remove them from legend"
             )
     by_char = raster.ascii_art(x, y, rows, legend)
-    colors = {char: parse_color(legend[char]) for char in by_char}
+    colors = {char: color_rgba(legend[char]) for char in by_char}
     shapes = [(colors[char], art) for char, art in by_char.items()]
     if outline is not None:
         visible = raster.union(*(art for char, art in by_char.items() if colors[char][3] > 0))
         ring = raster.outline(visible, raster.union(*by_char.values()))
-        shapes.append((parse_color(outline), ring))
+        shapes.append((color_rgba(outline), ring))
     return runs_op(shapes, layer, frame, create_cel, blend)
 
 
@@ -383,8 +383,8 @@ def draw_isometric_box(
     Pixels off the canvas are skipped and counted; painted includes the outline.
     """
     faces = raster.isometric_box(x, y, w, d, h)
-    shapes = [(parse_color(c), face) for c, face in zip((top, left, right), faces)]
+    shapes = [(color_rgba(c), face) for c, face in zip((top, left, right), faces)]
     if outline is not None:
         box = raster.union(*faces)
-        shapes.append((parse_color(outline), raster.outline(box, box)))
+        shapes.append((color_rgba(outline), raster.outline(box, box)))
     return runs_op(shapes, layer, frame, create_cel, blend)
