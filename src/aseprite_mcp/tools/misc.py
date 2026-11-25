@@ -29,9 +29,15 @@ async def batch(
 
     The ops run in a single Aseprite process and are saved once at the end. If any op
     fails, nothing is saved and the error names the failing op. create_sprite and other
-    multi-step tools are not accepted.
+    multi-step tools are not accepted. One call takes at most 1000 ops by default.
     """
-    target = resolve_path(path, server.get_settings(), must_exist=True)
+    settings = server.get_settings()
+    if len(ops) > settings.max_batch_ops:
+        raise ToolError(
+            f"Too many ops in one batch: {len(ops)} (limit {settings.max_batch_ops}); "
+            "split them over several calls"
+        )
+    target = resolve_path(path, settings, must_exist=True)
     return await run_batch(target, [(item.tool, item.args) for item in ops])
 
 

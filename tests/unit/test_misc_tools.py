@@ -166,3 +166,21 @@ async def test_every_tool_has_a_description():
     missing = [tool.name for tool in await mcp.list_tools() if not (tool.description or "").strip()]
 
     assert missing == []
+
+
+async def test_batch_refuses_more_ops_than_the_limit(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    (tmp_path / "s.aseprite").write_bytes(b"never opened")
+    settings = load_settings(
+        {"ASEPRITE_MCP_ROOT": str(tmp_path), "ASEPRITE_MCP_MAX_BATCH_OPS": "2"}
+    )
+    monkeypatch.setattr(server, "get_settings", lambda: settings)
+    ops = [{"tool": "flatten_sprite", "args": {}}] * 3
+
+    with pytest.raises(ToolError, match=r"Too many ops in one batch: 3 \(limit 2\)"):
+        await mcp.call_tool("batch", {"path": "s.aseprite", "ops": ops})
+
+
+def test_batch_limit_defaults_to_1000():
+    assert load_settings({}).max_batch_ops == 1000

@@ -110,6 +110,7 @@ Everything is set through environment variables.
 | `ASEPRITE_MCP_ALLOW_LUA` | off | `1` adds the `run_lua` tool (ignored in sandbox mode) |
 | `ASEPRITE_MCP_MAX_READ_PIXELS` | `65536` | Most pixels `read_pixels` returns per call |
 | `ASEPRITE_MCP_MAX_SCAN_PIXELS` | `16777216` | Most pixels `check_animation` scans for overlaps |
+| `ASEPRITE_MCP_MAX_BATCH_OPS` | `1000` | Most ops one `batch` call accepts |
 | `ASEPRITE_MCP_FONT_DIRS` | none | Extra font folders for `draw_text`, separated like `PATH` |
 
 Flags accept `1`, `true`, `yes` or `on`. Invalid numbers fall back to the default.
@@ -179,7 +180,8 @@ that `set_palette` accepts.
 
 Each tool call is one Aseprite run. `batch` runs several single-step tools on one
 sprite in a single run and saves once at the end; if any step fails nothing is
-saved and the error names the step. Pass the arguments of each tool without `path`:
+saved and the error names the step. One call takes up to 1000 ops
+(`ASEPRITE_MCP_MAX_BATCH_OPS`). Pass the arguments of each tool without `path`:
 
 ```json
 {
