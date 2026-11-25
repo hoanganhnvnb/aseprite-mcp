@@ -306,3 +306,11 @@ async def test_draw_text_blank_text_paints_nothing(call, tmp_path: Path):
     result = await call("draw_text", path="a.aseprite", text=" \n ", x=0, y=0, color="#ff0000")
 
     assert (result["painted"], result["width"], result["height"]) == (0, 0, 0)
+
+
+async def test_measure_text_treats_crlf_as_one_line_break(call):
+    crlf = await call("measure_text", text="Hi\r\nI")
+    lf = await call("measure_text", text="Hi\nI")
+
+    assert crlf == lf
+    assert crlf["lines"] == 2

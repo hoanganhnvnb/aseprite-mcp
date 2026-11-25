@@ -14,7 +14,12 @@ from .draw import Blend, CreateCel, DrawFrame, DrawLayer, runs_op
 
 Text = Annotated[
     str,
-    Field(min_length=1, max_length=fonts.MAX_CHARS, description="Text; '\\n' starts a new line"),
+    # The 2000 character limit applies after "\r\n" becomes "\n", in render_text.
+    Field(
+        min_length=1,
+        max_length=2 * fonts.MAX_CHARS,
+        description="Text, at most 2000 characters; '\\n' starts a new line",
+    ),
 ]
 FontName = Annotated[
     str | None,
@@ -133,7 +138,11 @@ def measure_text(
         letter_spacing=letter_spacing,
         line_spacing=line_spacing,
     )
-    return {"width": image.width, "height": image.height, "lines": text.count("\n") + 1}
+    return {
+        "width": image.width,
+        "height": image.height,
+        "lines": fonts.normalize_newlines(text).count("\n") + 1,
+    }
 
 
 @op_tool("draw_text", mutates=True)
@@ -171,7 +180,8 @@ def draw_text(
 
     The text's bounding box is the smallest box around every painted pixel (glyphs,
     outline and shadow); anchor picks which of its pixels is placed at (x, y). For an
-    even width or height the centre pixel is the one left of or above the middle. measure_text gives the box size.
+    even width or height the centre pixel is the one left of or above the middle.
+    measure_text gives the box size.
     Without antialias every pixel gets exactly color (or outline/shadow); with it,
     edge pixels are partly transparent: blend=false stores them as they are,
     blend=true mixes them over the layer. Indexed sprites take the nearest palette

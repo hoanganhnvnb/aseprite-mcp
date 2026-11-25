@@ -98,6 +98,38 @@ def test_scan_finds_fonts_in_nested_directories(tmp_path):
     assert found[0].family == real.family
 
 
+def test_font_dirs_expands_tilde_with_given_home():
+    env = {"ASEPRITE_MCP_FONT_DIRS": os.pathsep.join(["~/myfonts", "~"])}
+
+    assert font_dirs("linux", env, Path("/home/u"))[:2] == [
+        Path("/home/u/myfonts"),
+        Path("/home/u"),
+    ]
+
+
+def test_scan_lists_a_font_once_when_dirs_overlap(tmp_path):
+    real = some_font()
+    inner = tmp_path / "inner"
+    inner.mkdir()
+    shutil.copy(real.path, inner / f"copy{real.path.suffix}")
+
+    found = scan_fonts([inner, tmp_path])
+
+    assert len(found) == len(scan_fonts([inner]))
+    assert len({(f.name, f.index) for f in found}) == len(found)
+    assert {f.path for f in found} == {inner / f"copy{real.path.suffix}"}
+
+
+def test_scan_lists_a_symlinked_font_once(tmp_path):
+    real = some_font()
+    shutil.copy(real.path, tmp_path / f"a{real.path.suffix}")
+    (tmp_path / f"b{real.path.suffix}").symlink_to(tmp_path / f"a{real.path.suffix}")
+
+    found = scan_fonts([tmp_path])
+
+    assert {f.path.name for f in found} == {f"a{real.path.suffix}"}
+
+
 def test_scan_skips_files_that_are_not_fonts(tmp_path):
     (tmp_path / "broken.ttf").write_bytes(b"not a font at all")
     (tmp_path / "empty.otf").write_bytes(b"")
@@ -253,3 +285,23 @@ def test_multiline_height():
 
 def test_whitespace_only_text_is_empty():
     assert render_text("  \n ", default_font(), RED).size == (0, 0)
+
+
+def test_crlf_line_breaks_render_like_newlines():
+    font = default_font()
+
+    assert render_text("a\r\nb", font, RED).size == render_text("a\nb", font, RED).size
+
+
+def test_lone_carriage_return_is_a_line_break():
+    font = default_font()
+
+    assert render_text("a\rb", font, RED).size == render_text("a\nb", font, RED).size
+
+
+def test_length_limit_counts_crlf_as_one_character():
+    font = default_font(1)
+
+    image = render_text("a\r\n" * 999 + "a", font, RED)
+
+    assert image.size == render_text("a\n" * 999 + "a", font, RED).size

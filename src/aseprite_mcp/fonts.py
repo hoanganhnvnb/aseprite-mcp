@@ -9,6 +9,7 @@ at a time.
 
 import difflib
 import os
+import sys
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
@@ -45,11 +46,17 @@ class FontEntry:
         return f"{self.family} {self.style}".strip()
 
 
+def _expand_home(p: str, home: Path) -> Path:
+    if p == "~" or p.startswith(("~/", "~\\")):
+        return home / p[2:]
+    return Path(p)
+
+
 def font_dirs(platform: str, env: Mapping[str, str], home: Path | None = None) -> list[Path]:
     """Folders to search for fonts: ASEPRITE_MCP_FONT_DIRS first, then the system ones."""
     home = home if home is not None else Path.home()
-    dirs = [Path(p).expanduser() for p in env.get("ASEPRITE_MCP_FONT_DIRS", "").split(os.pathsep)]
-    dirs = [d for d in dirs if str(d) not in ("", ".")]
+    extra = [p.strip() for p in env.get("ASEPRITE_MCP_FONT_DIRS", "").split(os.pathsep)]
+    dirs = [_expand_home(p, home) for p in extra if p]
     if platform == "win32":
         windir = env.get("WINDIR") or env.get("SYSTEMROOT")
         if windir:
@@ -92,14 +99,34 @@ def _faces(path: Path) -> list[FontEntry]:
     return found
 
 
+def _file_key(path: Path) -> str:
+    try:
+        key = os.path.normcase(path.resolve())
+    except (OSError, RuntimeError):
+        key = os.path.normcase(path)
+    # macOS file systems are case-insensitive by default; normcase leaves case there.
+    return key.casefold() if sys.platform == "darwin" else key
+
+
 def _font_files(dirs: Iterable[Path]) -> list[Path]:
+    """Font files below dirs, each real file once (the first place it is found wins).
+
+    Folders may overlap (a custom folder inside a system one) and links may point at
+    the same file, so files are told apart by their resolved path.
+    """
     files: list[Path] = []
+    seen: set[str] = set()
     for root in dirs:
         # Symlinked folders are not followed, so a link loop cannot hang the scan.
         for folder, _, names in os.walk(root, onerror=lambda e: None):
-            files += [
-                Path(folder) / n for n in sorted(names) if Path(n).suffix.lower() in FONT_EXTENSIONS
-            ]
+            for name in sorted(names):
+                path = Path(folder) / name
+                if path.suffix.lower() not in FONT_EXTENSIONS:
+                    continue
+                key = _file_key(path)
+                if key not in seen:
+                    seen.add(key)
+                    files.append(path)
     return files
 
 
@@ -252,6 +279,10 @@ def _too_big(w: int, h: int) -> ToolError:
     )
 
 
+def normalize_newlines(text: str) -> str:
+    return text.replace("\r\n", "\n").replace("\r", "\n")
+
+
 def render_text(
     text: str,
     font: Font,
@@ -269,13 +300,15 @@ def render_text(
 ) -> Image.Image:
     """Render text into an RGBA image cropped to the painted pixels.
 
-    Lines split on "\\n" and start line-height + line_spacing px apart. bold adds a copy
-    of the glyphs 1 px to the right. Without antialias, glyph coverage is cut at 128 to
-    fully opaque or fully transparent; with it, partial coverage stays as partial alpha.
+    Lines split on "\\n" ("\\r\\n" and a lone "\\r" count as "\\n") and start
+    line-height + line_spacing px apart. bold adds a copy of the glyphs 1 px to the
+    right. Without antialias, glyph coverage is cut at 128 to fully opaque or fully
+    transparent; with it, partial coverage stays as partial alpha.
     The outline grows the glyphs by outline_width px towards the four sides (diamond
     corners) and sits under them; the shadow is the glyphs plus outline moved by
     (shadow_dx, shadow_dy), under everything. Empty or blank text gives a 0x0 image.
     """
+    text = normalize_newlines(text)
     if len(text) > MAX_CHARS:
         raise ToolError(f"The text has {len(text)} characters; the limit is {MAX_CHARS}")
     if not 1 <= outline_width <= MAX_OUTLINE:
