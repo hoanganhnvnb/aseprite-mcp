@@ -1,4 +1,6 @@
-from aseprite_mcp.ops import op_files, op_owners
+import re
+
+from aseprite_mcp.ops import OPS_DIR, op_files, op_owners
 from aseprite_mcp.tools._registry import BATCHABLE
 
 
@@ -35,3 +37,22 @@ def test_ops_called_outside_the_registry_have_a_file():
     assert owners["import_image"] == "export.lua"
     assert owners["run_lua"] == "misc.lua"
     assert owners["_ping"] == "sprite.lua"
+
+
+def test_every_op_assignment_is_found_by_the_owner_map():
+    definition = re.compile(r"""OPS(?:\.(\w+)|\[\s*["'](\w+)["']\s*\])\s*=|function\s+OPS\.(\w+)""")
+    assigned = set()
+    for path in OPS_DIR.glob("*.lua"):
+        for groups in definition.findall(path.read_text(encoding="utf-8")):
+            assigned.add(next(g for g in groups if g))
+
+    assert assigned - op_owners().keys() == set()
+
+
+def test_ops_only_call_ops_defined_in_the_same_file():
+    owners = op_owners()
+    for path in OPS_DIR.glob("*.lua"):
+        called = set(re.findall(r"OPS\.(\w+)\(", path.read_text(encoding="utf-8")))
+        elsewhere = {name for name in called if owners.get(name) != path.name}
+
+        assert elsewhere == set(), path.name
