@@ -4,7 +4,7 @@ import os
 import sys
 
 from . import __version__
-from .config import Settings, load_settings
+from .config import ConfigError, Settings, load_settings
 from .errors import AsepriteError
 from .ops import run_op
 
@@ -56,8 +56,13 @@ def main(argv: list[str] | None = None) -> int:
     if args.version:
         print(f"aseprite-mcp {__version__}")
         return 0
+    try:
+        settings = load_settings()
+    except ConfigError as e:
+        print(f"aseprite-mcp: {e}", file=sys.stderr)
+        return 2
     if args.check:
-        return _check(load_settings())
+        return _check(settings)
 
     from .server import mcp
 

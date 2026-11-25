@@ -104,16 +104,18 @@ Everything is set through environment variables.
 |---|---|---|
 | `ASEPRITE_PATH` | autodetect | Aseprite executable |
 | `ASEPRITE_MCP_ROOT` | server's working directory | Folder that relative paths resolve against |
-| `ASEPRITE_MCP_SANDBOX` | off | `1` refuses any path outside the root |
-| `ASEPRITE_TIMEOUT_SECONDS` | `60` | Time limit for one Aseprite run |
-| `ASEPRITE_MCP_MAX_PROCS` | CPU count, at most 4 | Aseprite processes allowed at once |
-| `ASEPRITE_MCP_ALLOW_LUA` | off | `1` adds the `run_lua` tool (ignored in sandbox mode) |
-| `ASEPRITE_MCP_MAX_READ_PIXELS` | `65536` | Most pixels `read_pixels` returns per call |
-| `ASEPRITE_MCP_MAX_SCAN_PIXELS` | `16777216` | Most pixels `check_animation` scans for overlaps |
-| `ASEPRITE_MCP_MAX_BATCH_OPS` | `1000` | Most ops one `batch` call accepts |
+| `ASEPRITE_MCP_SANDBOX` | off | On refuses any path outside the root |
+| `ASEPRITE_TIMEOUT_SECONDS` | `60` | Time limit for one Aseprite run, 1 to 3600 |
+| `ASEPRITE_MCP_MAX_PROCS` | CPU count, at most 4 | Aseprite processes allowed at once, 1 to 32 |
+| `ASEPRITE_MCP_ALLOW_LUA` | off | On adds the `run_lua` tool (ignored in sandbox mode) |
+| `ASEPRITE_MCP_MAX_READ_PIXELS` | `65536` | Most pixels `read_pixels` returns per call, up to 16777216 |
+| `ASEPRITE_MCP_MAX_SCAN_PIXELS` | `16777216` | Most pixels `check_animation` scans for overlaps, up to 2^30 |
+| `ASEPRITE_MCP_MAX_BATCH_OPS` | `1000` | Most ops one `batch` call accepts, up to 100000 |
 | `ASEPRITE_MCP_FONT_DIRS` | none | Extra font folders for `draw_text`, separated like `PATH` |
 
-Flags accept `1`, `true`, `yes` or `on`. Invalid numbers fall back to the default.
+Flags accept `1`, `true`, `yes` or `on` and `0`, `false`, `no` or `off` (any case);
+an empty value means the default. Any other value, or a number outside its range,
+stops the server at startup with a message naming the variable.
 
 ## Paths
 

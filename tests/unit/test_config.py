@@ -4,12 +4,17 @@ from pathlib import Path
 
 import pytest
 
-from aseprite_mcp.config import find_aseprite, load_settings
+from aseprite_mcp.config import ConfigError, find_aseprite, load_settings
 
 
-@pytest.mark.parametrize("raw", ["abc", "inf", "-1", "nan", "0", ""])
-def test_timeout_invalid_falls_back(raw):
-    assert load_settings({"ASEPRITE_TIMEOUT_SECONDS": raw}).timeout == 60.0
+@pytest.mark.parametrize("raw", ["abc", "inf", "-1", "nan", "0", "1e-9", "86400"])
+def test_timeout_out_of_range_is_refused(raw):
+    with pytest.raises(ConfigError, match="ASEPRITE_TIMEOUT_SECONDS"):
+        load_settings({"ASEPRITE_TIMEOUT_SECONDS": raw})
+
+
+def test_empty_timeout_uses_default():
+    assert load_settings({"ASEPRITE_TIMEOUT_SECONDS": " "}).timeout == 60.0
 
 
 def test_timeout_valid():
@@ -46,11 +51,42 @@ def test_numeric_and_bool_parsing(tmp_path):
     )
 
 
-@pytest.mark.parametrize("raw", ["0", "-3", "x", ""])
-def test_invalid_ints_fall_back(raw):
-    s = load_settings({"ASEPRITE_MCP_MAX_PROCS": raw, "ASEPRITE_MCP_MAX_READ_PIXELS": raw})
+@pytest.mark.parametrize("raw", ["0", "-3", "x", "2.5", "999"])
+def test_bad_max_procs_is_refused(raw):
+    with pytest.raises(ConfigError, match="ASEPRITE_MCP_MAX_PROCS"):
+        load_settings({"ASEPRITE_MCP_MAX_PROCS": raw})
+
+
+def test_empty_ints_use_defaults():
+    s = load_settings({"ASEPRITE_MCP_MAX_PROCS": "", "ASEPRITE_MCP_MAX_READ_PIXELS": ""})
     assert s.max_procs == min(4, os.cpu_count() or 1)
     assert s.max_read_pixels == 65536
+
+
+def test_read_pixel_limit_above_largest_canvas_is_refused():
+    with pytest.raises(ConfigError, match="from 1 to 16777216"):
+        load_settings({"ASEPRITE_MCP_MAX_READ_PIXELS": "16777217"})
+
+
+@pytest.mark.parametrize("raw", ["enabled", "2", "y", "nope"])
+def test_unrecognised_sandbox_value_is_refused(raw):
+    with pytest.raises(ConfigError, match="ASEPRITE_MCP_SANDBOX"):
+        load_settings({"ASEPRITE_MCP_SANDBOX": raw})
+
+
+def test_unrecognised_allow_lua_value_is_refused():
+    with pytest.raises(ConfigError, match="ASEPRITE_MCP_ALLOW_LUA"):
+        load_settings({"ASEPRITE_MCP_ALLOW_LUA": "enable"})
+
+
+@pytest.mark.parametrize("raw", ["0", "false", "No", " OFF ", ""])
+def test_false_spellings_turn_sandbox_off(raw):
+    assert load_settings({"ASEPRITE_MCP_SANDBOX": raw}).sandbox is False
+
+
+@pytest.mark.parametrize("raw", ["1", "TRUE", "yes", "on"])
+def test_true_spellings_turn_sandbox_on(raw):
+    assert load_settings({"ASEPRITE_MCP_SANDBOX": raw}).sandbox is True
 
 
 def test_scan_pixel_limit_from_env():

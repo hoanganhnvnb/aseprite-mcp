@@ -11,7 +11,15 @@ DEFAULT_MAX_READ_PIXELS = 65536
 # Pixels check_animation may scan for overlaps in one call (about a second of work).
 DEFAULT_MAX_SCAN_PIXELS = 16 * 1024 * 1024
 DEFAULT_MAX_BATCH_OPS = 1000
+MIN_TIMEOUT = 1.0
+MAX_TIMEOUT = 3600.0
+MAX_PROCS = 32
 _TRUE = {"1", "true", "yes", "on"}
+_FALSE = {"0", "false", "no", "off"}
+
+
+class ConfigError(ValueError):
+    pass
 
 
 @dataclass(frozen=True)
@@ -27,24 +35,44 @@ class Settings:
     max_batch_ops: int = DEFAULT_MAX_BATCH_OPS
 
 
-def _flag(value: str | None) -> bool:
-    return value is not None and value.strip().lower() in _TRUE
+def _flag(env: Mapping[str, str], name: str) -> bool:
+    value = env.get(name, "").strip().lower()
+    if value in _TRUE:
+        return True
+    if value in _FALSE or value == "":
+        return False
+    raise ConfigError(
+        f"{name}={env[name]!r} is not a yes/no value; use 1/true/yes/on or 0/false/no/off"
+    )
 
 
-def _positive_int(value: str | None, default: int) -> int:
-    try:
-        n = int(value) if value is not None else default
-    except ValueError:
+def _int(env: Mapping[str, str], name: str, default: int, high: int) -> int:
+    value = env.get(name, "").strip()
+    if not value:
         return default
-    return n if n >= 1 else default
-
-
-def _timeout(value: str | None) -> float:
     try:
-        seconds = float(value) if value is not None else DEFAULT_TIMEOUT
+        n = int(value)
     except ValueError:
+        n = 0
+    if not 1 <= n <= high:
+        raise ConfigError(f"{name}={env[name]!r} must be a whole number from 1 to {high}")
+    return n
+
+
+def _timeout(env: Mapping[str, str]) -> float:
+    name = "ASEPRITE_TIMEOUT_SECONDS"
+    value = env.get(name, "").strip()
+    if not value:
         return DEFAULT_TIMEOUT
-    return seconds if math.isfinite(seconds) and seconds > 0 else DEFAULT_TIMEOUT
+    try:
+        seconds = float(value)
+    except ValueError:
+        seconds = math.nan
+    if not MIN_TIMEOUT <= seconds <= MAX_TIMEOUT:
+        raise ConfigError(
+            f"{name}={env[name]!r} must be a number of seconds from {MIN_TIMEOUT:g} to {MAX_TIMEOUT:g}"
+        )
+    return seconds
 
 
 def find_aseprite(env: Mapping[str, str], platform: str = sys.platform) -> str | None:
@@ -95,19 +123,18 @@ def _known_locations(env: Mapping[str, str], platform: str) -> list[Path]:
 
 
 def load_settings(env: Mapping[str, str] = os.environ) -> Settings:
+    """Read the settings from the environment; raises ConfigError on a value it cannot use."""
     root = env.get("ASEPRITE_MCP_ROOT", "").strip()
     return Settings(
         aseprite=find_aseprite(env),
         root=Path(root).expanduser().resolve() if root else Path.cwd(),
-        sandbox=_flag(env.get("ASEPRITE_MCP_SANDBOX")),
-        timeout=_timeout(env.get("ASEPRITE_TIMEOUT_SECONDS")),
-        max_procs=_positive_int(env.get("ASEPRITE_MCP_MAX_PROCS"), min(4, os.cpu_count() or 1)),
-        allow_lua=_flag(env.get("ASEPRITE_MCP_ALLOW_LUA")),
-        max_read_pixels=_positive_int(
-            env.get("ASEPRITE_MCP_MAX_READ_PIXELS"), DEFAULT_MAX_READ_PIXELS
+        sandbox=_flag(env, "ASEPRITE_MCP_SANDBOX"),
+        timeout=_timeout(env),
+        max_procs=_int(env, "ASEPRITE_MCP_MAX_PROCS", min(4, os.cpu_count() or 1), MAX_PROCS),
+        allow_lua=_flag(env, "ASEPRITE_MCP_ALLOW_LUA"),
+        max_read_pixels=_int(
+            env, "ASEPRITE_MCP_MAX_READ_PIXELS", DEFAULT_MAX_READ_PIXELS, 4096 * 4096
         ),
-        max_scan_pixels=_positive_int(
-            env.get("ASEPRITE_MCP_MAX_SCAN_PIXELS"), DEFAULT_MAX_SCAN_PIXELS
-        ),
-        max_batch_ops=_positive_int(env.get("ASEPRITE_MCP_MAX_BATCH_OPS"), DEFAULT_MAX_BATCH_OPS),
+        max_scan_pixels=_int(env, "ASEPRITE_MCP_MAX_SCAN_PIXELS", DEFAULT_MAX_SCAN_PIXELS, 1 << 30),
+        max_batch_ops=_int(env, "ASEPRITE_MCP_MAX_BATCH_OPS", DEFAULT_MAX_BATCH_OPS, 100_000),
     )
