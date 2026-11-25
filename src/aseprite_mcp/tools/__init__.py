@@ -1,3 +1,31 @@
-from . import cels, color, draw, frames, layers, misc, read, region, sprite, text
+from . import (
+    cels,
+    color,
+    draw,
+    frames,
+    layers,
+    misc,
+    quality,
+    read,
+    region,
+    slices,
+    sprite,
+    text,
+    tilemap,
+)
 
-__all__ = ["cels", "color", "draw", "frames", "layers", "misc", "read", "region", "sprite", "text"]
+__all__ = [
+    "cels",
+    "color",
+    "draw",
+    "frames",
+    "layers",
+    "misc",
+    "quality",
+    "read",
+    "region",
+    "slices",
+    "sprite",
+    "text",
+    "tilemap",
+]

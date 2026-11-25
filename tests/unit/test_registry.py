@@ -325,3 +325,41 @@ def test_no_userwarning_for_copy_parameter():
         )
 
     assert args.copy is True
+
+
+def test_quality_slice_and_tilemap_tools_are_batchable():
+    for name in ("check_animation", "list_slices", "get_tilemap_info"):
+        assert BATCHABLE[name][:2] == (name, False)
+    for name in ("repair_animation", "copy_layers", "create_slice", "set_tiles", "draw_tile"):
+        assert BATCHABLE[name][:2] == (name, True)
+
+
+async def test_copy_layers_takes_target_and_source_paths():
+    schema = await _schema("copy_layers")
+
+    assert list(schema["properties"])[:2] == ["target", "source"]
+    assert set(schema["required"]) == {"target", "source", "layers"}
+
+
+async def test_copy_layers_refuses_source_outside_sandbox(sandboxed: Path):
+    with pytest.raises(ToolError, match="outside the allowed root"):
+        await mcp.call_tool(
+            "copy_layers", {"target": "s.aseprite", "source": "../other.aseprite", "layers": ["A"]}
+        )
+
+
+async def test_batch_copy_layers_refuses_source_equal_to_batch_sprite(sandboxed: Path):
+    with pytest.raises(ToolError, match="op 1 \\(copy_layers\\): source must be a different file"):
+        await mcp.call_tool(
+            "batch",
+            {
+                "path": "s.aseprite",
+                "ops": [{"tool": "copy_layers", "args": {"source": "s.aseprite", "layers": ["A"]}}],
+            },
+        )
+
+
+async def test_set_tiles_schema_limits_cells():
+    tiles = (await _schema("set_tiles"))["properties"]["tiles"]
+
+    assert tiles["maxItems"] == 4096

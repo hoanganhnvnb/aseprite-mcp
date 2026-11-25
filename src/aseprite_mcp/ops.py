@@ -20,6 +20,8 @@ class Op:
     # Files the op writes besides the sprite, as (temporary, final) pairs. The op
     # writes the temporary file; it is moved into place only if the whole run succeeds.
     writes: list[tuple[Path, Path]] = field(default_factory=list)
+    # Other sprites the op opens for reading; locked like the sprite for the run.
+    reads: list[Path] = field(default_factory=list)
 
 
 def output_file(final: Path) -> tuple[Path, Path]:
@@ -52,6 +54,7 @@ async def run_ops(
         "target": str(path) if path is not None else None,
     }
     lock_paths = [final for _, final in writes]
+    lock_paths += [source for op in ops for source in op.reads]
     if path is not None:
         lock_paths.append(path)
     try:

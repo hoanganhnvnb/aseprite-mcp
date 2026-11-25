@@ -31,6 +31,7 @@ BATCHABLE: dict[str, tuple[str, bool, Builder]] = {}
 class _Extra:
     path_arg: str
     writes: str | None
+    reads: str | None
     args_model: type[BaseModel]
     finish: Finisher | None
 
@@ -63,6 +64,7 @@ def op_tool(
     mutates: bool,
     path_arg: str = "path",
     writes: str | None = None,
+    reads: str | None = None,
     finish: Finisher | None = None,
 ) -> Callable[[Builder], Callable[..., Any]]:
     """Register a tool that maps to exactly one Lua op.
@@ -74,6 +76,8 @@ def op_tool(
     resolves it like any path, checks the folder, the extension and the builder's
     `overwrite` argument (False when it has none), and the op writes to a temporary
     file that replaces the output only when the whole run succeeds.
+    `reads` names a param holding another existing sprite the op opens; it is resolved
+    the same way, must differ from the sprite, and is locked for the run.
     `finish` reshapes the op's result in Python, in direct calls and in batch alike.
     """
 
@@ -100,7 +104,7 @@ def op_tool(
         )
         server.mcp.add_tool(tool, name=name)
         BATCHABLE[name] = (op, mutates, builder)
-        _EXTRA[name] = _Extra(path_arg, writes, _args_model(name, signature), finish)
+        _EXTRA[name] = _Extra(path_arg, writes, reads, _args_model(name, signature), finish)
         return tool
 
     return register
@@ -138,7 +142,15 @@ def make_op(tool: str, params: dict[str, Any], path: Path, overwrite: bool = Fal
         tmp, final = output_file(_output_path(key, params[key], overwrite, path))
         params[key] = str(tmp)
         writes.append((tmp, final))
-    return Op(op, params, mutates, label=tool, writes=writes)
+    reads = []
+    key = _EXTRA[tool].reads
+    if key is not None:
+        source = resolve_path(str(params[key]), server.get_settings(), must_exist=True)
+        if _same_file(source, path):
+            raise ToolError(f"{key} must be a different file than the sprite itself")
+        params[key] = str(source)
+        reads.append(source)
+    return Op(op, params, mutates, label=tool, writes=writes, reads=reads)
 
 
 def op_result(tool: str, op: Op, result: dict[str, Any]) -> dict[str, Any]:

@@ -85,32 +85,6 @@ local function copy_layers(spr, names)
   return out
 end
 
-local function link_cels(spr, layer, source, frames)
-  app.sprite = spr
-  app.range.layers = { layer }
-  local range = { spr.frames[source] }
-  for _, n in ipairs(frames) do
-    table.insert(range, spr.frames[n])
-  end
-  app.range.frames = range
-  -- The command skips a layer that is locked or sits in a locked group; the plain copy
-  -- ignores locks, so unlock the whole chain for the command and restore it after.
-  local ok, err = pcall(with_unlocked, layer, app.command.LinkCels)
-  app.range:clear()
-  if not ok then
-    error(err, 0)
-  end
-  local image = layer:cel(source).image
-  for _, n in ipairs(frames) do
-    local cel = layer:cel(n)
-    if cel == nil or cel.image ~= image then
-      fail(string.format(
-        "Aseprite did not link the cel of '%s' in frame %d (the layer and its groups were "
-          .. "unlocked for linking); copy without link=true instead", layer_path(layer), n))
-    end
-  end
-end
-
 OPS.copy_frames = function(ctx, p)
   local spr = need_sprite(ctx)
   local count = #spr.frames
@@ -151,7 +125,7 @@ OPS.copy_frames = function(ctx, p)
       end
     end
     if p.link and #filled > 0 then
-      link_cels(spr, layer, p.source, filled)
+      link_cels(spr, layer, p.source, filled, "; copy without link=true instead")
     end
   end
   return {

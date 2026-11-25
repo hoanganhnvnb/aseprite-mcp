@@ -122,7 +122,11 @@ local function run_ops(ctx, ops)
     if fn == nil then
       error({ op_index = i, message = "unknown op '" .. tostring(op.name) .. "'" })
     end
+    -- A mutating op that turns out to change nothing sets ctx.changed = false, so a
+    -- run made only of such ops leaves the file untouched.
+    ctx.changed = nil
     local ok, res = xpcall(fn, op_traceback, ctx, op.params or {})
+    op.unchanged = ctx.changed == false
     if not ok then
       local message = error_text(res)
       if #ops > 1 then
@@ -173,7 +177,7 @@ local function main()
   if P.save_tmp and spr then
     local mutated = P.create ~= nil
     for _, op in ipairs(ops) do
-      mutated = mutated or op.mutates == true
+      mutated = mutated or (op.mutates == true and not op.unchanged)
     end
     if mutated then
       check_save_format(spr, P.target)

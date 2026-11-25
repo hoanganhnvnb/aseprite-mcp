@@ -488,6 +488,34 @@ function cels_to_change(spr, layer, frames)
   return out, missing
 end
 
+-- Links the cels of `frames` to the cel in frame `source`, which must exist. `hint` is
+-- appended to the error when Aseprite does not link them.
+function link_cels(spr, layer, source, frames, hint)
+  app.sprite = spr
+  app.range.layers = { layer }
+  local range = { spr.frames[source] }
+  for _, n in ipairs(frames) do
+    table.insert(range, spr.frames[n])
+  end
+  app.range.frames = range
+  -- The command skips a layer that is locked or sits in a locked group, so the whole
+  -- chain is unlocked for it and restored after.
+  local ok, err = pcall(with_unlocked, layer, app.command.LinkCels)
+  app.range:clear()
+  if not ok then
+    error(err, 0)
+  end
+  local image = layer:cel(source).image
+  for _, n in ipairs(frames) do
+    local cel = layer:cel(n)
+    if cel == nil or cel.image ~= image then
+      fail(string.format(
+        "Aseprite did not link the cel of '%s' in frame %d (the layer and its groups were "
+          .. "unlocked for linking)%s", layer_path(layer), n, hint or ""))
+    end
+  end
+end
+
 -- The part of rect {x, y, w, h} that lies on the canvas; fails when nothing does.
 function canvas_rect(spr, r)
   local area = Rectangle(r.x, r.y, r.w, r.h):intersect(spr.bounds)
