@@ -33,26 +33,6 @@ local function existing_cels(layer, path, frames)
   return out
 end
 
--- Linked cels share position and opacity along with the image, so a cel whose image
--- other frames use as well gets replaced by its own copy before it is changed.
-local function image_users(layer)
-  local users = {}
-  for _, cel in ipairs(layer.cels) do
-    local id = cel.image.id
-    users[id] = (users[id] or 0) + 1
-  end
-  return users
-end
-
-local function own_cel(spr, layer, cel, users)
-  local id = cel.image.id
-  if (users[id] or 0) <= 1 then
-    return cel
-  end
-  users[id] = users[id] - 1
-  return put_cel(spr, layer, cel.frameNumber, cel.image:clone(), cel.position, cel_props(cel))
-end
-
 local function empty_image(spr, layer)
   if layer.isTilemap then
     local img = Image(ImageSpec { width = 1, height = 1, colorMode = ColorMode.TILEMAP })

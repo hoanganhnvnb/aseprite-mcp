@@ -24,3 +24,20 @@ Color = Annotated[
     AfterValidator(_check_color),
     Field(description="'#RRGGBB', '#RRGGBBAA' or 'transparent'"),
 ]
+
+
+# Strict so that strings and floats are rejected instead of coerced.
+Coord = Annotated[int, Field(strict=True, ge=-65535, le=65535)]
+
+
+class Point(BaseModel):
+    """A pixel position in sprite coordinates."""
+
+    x: Coord
+    y: Coord
+
+
+class Pixel(BaseModel):
+    x: Coord
+    y: Coord
+    color: Color

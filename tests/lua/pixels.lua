@@ -1,7 +1,9 @@
 -- Test helper: sets and reads pixels in one frame of the open sprite (frame 1 unless
 -- params.frame says otherwise), on the first layer or on the layer named by params.layer.
--- params: set = {{x, y, r, g, b, a}, ...}, get = {{x, y}, ...}, layer = name or nil
--- The result holds RGBA in `pixels` and the stored pixel values (e.g. indices) in `values`.
+-- params: set = {{x, y, r, g, b, a}, ...}, get = {{x, y}, ...}, layer = name or nil,
+-- palette = {{r, g, b, a}, ...} to replace the palette before anything else.
+-- The result holds RGBA in `pixels`, the stored pixel values (e.g. indices) in `values`
+-- and the whole canvas as rows of '#' (painted) and '.' (transparent) in `grid`.
 
 local fh = assert(io.open(app.params.params, "rb"))
 local P = json.decode(fh:read("a"))
@@ -20,6 +22,16 @@ local function int(v)
 end
 
 local frame = P.frame and int(P.frame) or 1
+
+local palette = P.palette or {}
+if #palette > 0 then
+  local pal = Palette(#palette)
+  for i = 1, #palette do
+    local c = palette[i]
+    pal:setColor(i - 1, Color { r = int(c[1]), g = int(c[2]), b = int(c[3]), a = int(c[4]) })
+  end
+  spr:setPalette(pal)
+end
 
 local set = P.set or {}
 for i = 1, #set do
@@ -45,12 +57,29 @@ for i = 1, #get do
   pixels[i] = rgba
 end
 
+local grid = {}
+local cel = layer:cel(frame)
+for y = 0, spr.height - 1 do
+  local row = {}
+  for x = 0, spr.width - 1 do
+    local mark = "."
+    if cel and cel.bounds:contains(Rectangle(x, y, 1, 1)) then
+      local value = cel.image:getPixel(x - cel.position.x, y - cel.position.y)
+      if not is_transparent(spr, value, layer) then
+        mark = "#"
+      end
+    end
+    row[#row + 1] = mark
+  end
+  grid[#grid + 1] = table.concat(row)
+end
+
 local saved = false
-if #set > 0 and P.save_tmp then
+if (#set > 0 or #palette > 0) and P.save_tmp then
   spr:saveCopyAs(P.save_tmp)
   saved = true
 end
 
 local out = assert(io.open(P.result_path, "wb"))
-out:write(json.encode({ ok = true, saved = saved, pixels = pixels, values = values }))
+out:write(json.encode({ ok = true, saved = saved, pixels = pixels, values = values, grid = grid }))
 out:close()

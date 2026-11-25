@@ -379,6 +379,39 @@ function put_cel(spr, layer, frame, image, position, props)
   return cel
 end
 
+-- Linked cels share position and opacity along with the image, so a cel whose image
+-- other frames use as well gets replaced by its own copy before it is changed.
+function image_users(layer)
+  local users = {}
+  for _, cel in ipairs(layer.cels) do
+    local id = cel.image.id
+    users[id] = (users[id] or 0) + 1
+  end
+  return users
+end
+
+function own_cel(spr, layer, cel, users)
+  local id = cel.image.id
+  if (users[id] or 0) <= 1 then
+    return cel
+  end
+  users[id] = users[id] - 1
+  if layer.isBackground then
+    -- deleteCel leaves background cels in place, so put_cel cannot replace them.
+    local frame = cel.frameNumber
+    app.sprite = spr
+    app.range.layers = { layer }
+    app.range.frames = { cel.frame }
+    app.command.UnlinkCel()
+    cel = layer:cel(frame)
+    if cel.image.id == id then
+      fail(string.format("could not unlink the cel of '%s' in frame %d", layer.name, frame))
+    end
+    return cel
+  end
+  return put_cel(spr, layer, cel.frameNumber, cel.image:clone(), cel.position, cel_props(cel))
+end
+
 -- Makes the cel at `to` an independent copy of the one at `from`, or removes it when
 -- `from` has no cel.
 function copy_cel(spr, layer, from, to)

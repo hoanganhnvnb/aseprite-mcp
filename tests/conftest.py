@@ -93,6 +93,39 @@ def pixels(ase_settings: Settings):
 
 
 @pytest.fixture
+def grid(ase_settings: Settings):
+    """Returns the canvas of one layer and frame as rows of '#' (painted) and '.'."""
+
+    async def run(path: Path, layer: str | None = None, frame: int = 1) -> list[str]:
+        params: dict = {"frame": frame}
+        if layer is not None:
+            params["layer"] = layer
+        result = await run_script(
+            PIXELS_SCRIPT, params, settings=ase_settings, lock_paths=[path], open_file=path
+        )
+        return result.data["grid"]
+
+    return run
+
+
+@pytest.fixture
+def set_palette(ase_settings: Settings):
+    """Replaces the palette with the given (r, g, b, a) colours, index 0 first."""
+
+    async def run(path: Path, colors: Sequence) -> None:
+        await run_script(
+            PIXELS_SCRIPT,
+            {"palette": [list(c) for c in colors]},
+            settings=ase_settings,
+            lock_paths=[path],
+            open_file=path,
+            save_to=path,
+        )
+
+    return run
+
+
+@pytest.fixture
 def cels(ase_settings: Settings):
     """Lists a layer's cel in every frame (False where there is none).
 

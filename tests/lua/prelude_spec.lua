@@ -75,6 +75,13 @@ local function run()
   check("background index 0 not transparent", not is_transparent(bg, 0, back))
   check("background maps to index 0", color_value(bg, { 0, 0, 0, 255 }, back) == 0)
   check("background ignores alpha", color_value(bg, { 255, 0, 0, 0 }, back) == 1)
+  bg:newEmptyFrame(2)
+  app.range.layers = { back }
+  app.range.frames = { bg.frames[1], bg.frames[2] }
+  app.command.LinkCels()
+  local owned = own_cel(bg, back, back:cel(2), image_users(back))
+  check("own_cel unlinks background cel", owned.image.id ~= back:cel(1).image.id
+    and owned.frameNumber == 2)
   check("layer arg on normal layer", color_value(indexed, { 0, 0, 0, 0 }, indexed.layers[1]) == 0)
 
   local fresh_indexed = Sprite(2, 2, ColorMode.INDEXED)

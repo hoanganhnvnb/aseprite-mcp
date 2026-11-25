@@ -173,3 +173,51 @@ async def test_oscillate_cels_schema():
     assert schema["required"] == ["path", "layer", "frames"]
     cycles = schema["properties"]["cycles"]
     assert (cycles["minimum"], cycles["maximum"], cycles["default"]) == (0.1, 64, 1.0)
+
+
+def test_draw_tools_are_batchable_mutations():
+    for name in ("draw_pixels", "draw_line", "draw_rect", "draw_ellipse", "draw_polygon"):
+        assert BATCHABLE[name][:2] == (name, True)
+    assert BATCHABLE["fill_area"][:2] == ("fill_area", True)
+
+
+async def test_draw_tools_required_params():
+    required = {
+        "draw_pixels": ["path", "pixels"],
+        "draw_line": ["path", "points", "color"],
+        "draw_rect": ["path", "rect", "color"],
+        "draw_ellipse": ["path", "cx", "cy", "rx", "ry", "color"],
+        "draw_polygon": ["path", "points", "color"],
+        "fill_area": ["path", "x", "y", "color"],
+    }
+    for name, params in required.items():
+        assert (await _schema(name))["required"] == params
+
+
+async def test_draw_tools_share_target_params():
+    for name in ("draw_pixels", "draw_line", "draw_rect", "fill_area"):
+        props = (await _schema(name))["properties"]
+        assert (props["layer"]["default"], props["frame"]["default"]) == ("", 1)
+        assert props["create_cel"]["default"] is True
+
+
+async def test_draw_pixels_schema_limits_pixel_count():
+    schema = await _schema("draw_pixels")
+
+    assert schema["properties"]["pixels"]["maxItems"] == 16384
+    assert "Pixel" in schema["$defs"]
+
+
+async def test_draw_line_schema():
+    props = (await _schema("draw_line"))["properties"]
+
+    assert props["points"]["minItems"] == 2
+    assert (props["thickness"]["minimum"], props["thickness"]["maximum"]) == (1, 64)
+    assert props["blend"]["default"] is False
+
+
+async def test_fill_area_schema_has_no_blend():
+    props = (await _schema("fill_area"))["properties"]
+
+    assert "blend" not in props
+    assert (props["tolerance"]["minimum"], props["tolerance"]["maximum"]) == (0, 255)
