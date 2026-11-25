@@ -1,10 +1,14 @@
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from functools import cache
+from typing import Any
 
 from mcp.server.fastmcp import FastMCP
+from pydantic import ValidationError
 
+from . import __version__
 from .config import Settings, load_settings
+from .errors import ToolError, describe_invalid
 from .preview import preview
 
 INSTRUCTIONS = """\
@@ -42,7 +46,20 @@ async def _lifespan(_: FastMCP) -> AsyncIterator[None]:
         preview.stop()
 
 
-mcp = FastMCP("aseprite", instructions=INSTRUCTIONS, lifespan=_lifespan)
+class _Server(FastMCP):
+    async def call_tool(self, name: str, arguments: dict[str, Any]) -> Any:
+        try:
+            return await super().call_tool(name, arguments)
+        except ToolError as e:
+            if isinstance(e.__cause__, ValidationError):
+                problems = describe_invalid(e.__cause__)
+                raise ToolError(f"{name}: invalid arguments: {problems}") from None
+            raise
+
+
+mcp = _Server("aseprite", instructions=INSTRUCTIONS, lifespan=_lifespan)
+# FastMCP has no setting for this; without it clients see the mcp library's version.
+mcp._mcp_server.version = __version__
 
 
 @cache

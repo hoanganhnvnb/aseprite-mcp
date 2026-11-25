@@ -9,7 +9,7 @@ from ..errors import ToolError
 from ..guide import GUIDES, Topic
 from ..ops import Op, run_ops
 from ..paths import resolve_path
-from ._registry import SpritePath, run_batch
+from ._registry import READ_ONLY, SpritePath, run_batch
 
 MAX_SCRIPT_BYTES = 200 * 1024
 
@@ -23,7 +23,10 @@ class BatchItem(BaseModel):
 
 @server.mcp.tool()
 async def batch(
-    path: SpritePath, ops: Annotated[list[BatchItem], Field(min_length=1)]
+    path: SpritePath,
+    ops: Annotated[
+        list[BatchItem], Field(min_length=1, description="Tools to run, in order, as {tool, args}")
+    ],
 ) -> list[dict[str, Any]]:
     """Run several single-step tools on one sprite in one go and return their results in order.
 
@@ -41,8 +44,10 @@ async def batch(
     return await run_batch(target, [(item.tool, item.args) for item in ops])
 
 
-@server.mcp.tool()
-def pixel_art_guide(topic: Topic = "basics") -> str:
+@server.mcp.tool(annotations=READ_ONLY)
+def pixel_art_guide(
+    topic: Annotated[Topic, Field(description="Which notes to show")] = "basics",
+) -> str:
     """Short practical notes on drawing or animating pixel art with this server's tools.
 
     Topics: basics, animation, idle, walk, attack, effects.

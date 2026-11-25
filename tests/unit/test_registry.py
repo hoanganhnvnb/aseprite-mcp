@@ -1,11 +1,12 @@
 import inspect
 import warnings
 from pathlib import Path
-from typing import Any
+from typing import Annotated, Any
 
 import pytest
+from pydantic import Field
 
-from aseprite_mcp import server
+from aseprite_mcp import __version__, server
 from aseprite_mcp.config import load_settings
 from aseprite_mcp.errors import ToolError
 from aseprite_mcp.server import mcp
@@ -57,7 +58,7 @@ async def test_internal_ping_is_not_a_tool():
 
 
 @op_tool("save_copy", mutates=False, writes="output")
-def write_raw_output(output: str) -> dict[str, Any]:
+def write_raw_output(output: Annotated[str, Field(description="File to write")]) -> dict[str, Any]:
     """Test-only tool whose builder passes the output path through untouched."""
     return {"output": output}
 
@@ -370,3 +371,42 @@ async def test_save_copy_refuses_output_equal_to_sprite(sandboxed: Path):
         await mcp.call_tool(
             "save_copy", {"path": "s.aseprite", "output": "./s.aseprite", "overwrite": True}
         )
+
+
+async def test_every_tool_parameter_has_a_description():
+    missing = [
+        f"{tool.name}.{name}"
+        for tool in await mcp.list_tools()
+        for name, prop in tool.inputSchema["properties"].items()
+        if not prop.get("description")
+    ]
+
+    assert missing == []
+
+
+async def test_read_only_tools_are_marked():
+    annotations = {tool.name: tool.annotations for tool in await mcp.list_tools()}
+
+    assert annotations["get_sprite_info"].readOnlyHint is True
+    assert annotations["view_sprite"].readOnlyHint is True
+    assert annotations["draw_rect"] is None
+    assert annotations["save_copy"] is None
+
+
+def test_server_reports_package_version():
+    options = mcp._mcp_server.create_initialization_options()
+
+    assert options.server_version == __version__
+
+
+async def test_direct_call_with_bad_arguments_gives_short_message():
+    with pytest.raises(ToolError) as info:
+        await mcp.call_tool(
+            "draw_rect",
+            {"path": "a.aseprite", "rect": {"x": 0, "y": 0, "w": 0, "h": 1}, "color": "red"},
+        )
+
+    message = str(info.value)
+    assert message.startswith("draw_rect: invalid arguments: rect.w: ")
+    assert "Invalid color 'red'" in message
+    assert "errors.pydantic.dev" not in message

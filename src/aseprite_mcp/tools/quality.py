@@ -35,7 +35,7 @@ def _check_result(result: dict[str, Any], _: dict[str, Any]) -> dict[str, Any]:
 @op_tool("check_animation", mutates=False, finish=_check_result)
 def check_animation(
     frames: FrameSpec = "all",
-    required_layers: LayerList = None,
+    required_layers: Annotated[LayerList, Field(description="Layers that must exist")] = None,
     layer_frame_ranges: FrameRanges = None,
     overlap_pairs: Annotated[
         list[tuple[LayerRef, LayerRef]] | None,
@@ -90,7 +90,10 @@ def repair_animation(
         ),
     ] = None,
     layer_frame_ranges: FrameRanges = None,
-    out_of_range: Literal["report", "hide", "delete"] = "report",
+    out_of_range: Annotated[
+        Literal["report", "hide", "delete"],
+        Field(description="What to do with cels outside a layer's frame range"),
+    ] = "report",
 ) -> dict[str, Any]:
     """Fix the structure of an animation; everything is checked before anything changes.
 

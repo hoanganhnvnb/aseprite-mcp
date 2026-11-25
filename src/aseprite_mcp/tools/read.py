@@ -15,7 +15,7 @@ from ..models import Rect
 from ..ops import run_op
 from ..paths import resolve_path
 from ..ranges import FrameSpec
-from ._registry import SpritePath, op_tool
+from ._registry import READ_ONLY, SpritePath, op_tool
 
 MAX_VIEW_FRAMES = 64
 # Pixels rendered for one view_sprite call, onion-skin frames included.
@@ -81,10 +81,12 @@ def _read_pixels_result(result: dict[str, Any], params: dict[str, Any]) -> dict[
 
 @op_tool("read_pixels", mutates=False, finish=_read_pixels_result)
 def read_pixels(
-    rect: Rect,
+    rect: Annotated[Rect, Field(description="Canvas rectangle to read")],
     layer: ReadLayer = None,
     frame: Frame = 1,
-    format: Literal["rows", "hex", "json"] = "rows",
+    format: Annotated[
+        Literal["rows", "hex", "json"], Field(description="Shape of the returned pixels")
+    ] = "rows",
 ) -> dict[str, Any]:
     """Read the pixels in rect; parts outside the canvas read as transparent.
 
@@ -179,7 +181,8 @@ def _stats_result(result: dict[str, Any], _: dict[str, Any]) -> dict[str, Any]:
 
 @op_tool("get_color_stats", mutates=False, finish=_stats_result)
 def get_color_stats(
-    frame: Frame = 1, top: Annotated[int, Field(ge=1, le=256)] = 16
+    frame: Frame = 1,
+    top: Annotated[int, Field(ge=1, le=256, description="Most colours to list")] = 16,
 ) -> dict[str, Any]:
     """The most used colours of the visible composite of one frame.
 
@@ -239,7 +242,7 @@ def _load(path: Path, frame: int) -> Image.Image:
         raise AsepriteError(f"Aseprite did not render frame {frame}") from None
 
 
-@server.mcp.tool(structured_output=False)
+@server.mcp.tool(structured_output=False, annotations=READ_ONLY)
 async def view_sprite(
     path: SpritePath,
     frames: FrameSpec = 1,

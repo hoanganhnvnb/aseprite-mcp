@@ -204,11 +204,19 @@ async def export_spritesheet(
     data_output: Annotated[
         str | None, Field(description="JSON file describing the frames; default none")
     ] = None,
-    sheet_type: Literal["horizontal", "vertical", "rows", "columns", "packed"] = "horizontal",
+    sheet_type: Annotated[
+        Literal["horizontal", "vertical", "rows", "columns", "packed"],
+        Field(
+            description="Layout: one row, one column, a grid filled by rows or columns, or packed"
+        ),
+    ] = "horizontal",
     tag: Annotated[str | None, Field(min_length=1, description="Only this tag's frames")] = None,
     scale: Scale = 1,
     padding: Annotated[int, Field(ge=0, le=32, description="Pixels between frames")] = 0,
-    data_format: Literal["hash", "array"] = "hash",
+    data_format: Annotated[
+        Literal["hash", "array"],
+        Field(description="JSON frames as an object keyed by name, or a list"),
+    ] = "hash",
     overwrite: Overwrite = False,
 ) -> dict[str, Any]:
     """Lay the frames out in one image with Aseprite's sprite sheet exporter.

@@ -9,7 +9,7 @@ from pydantic import Field
 from .. import fonts, raster, server
 from ..colors import RGBA, parse_color
 from ..models import Color, Coord
-from ._registry import op_tool
+from ._registry import READ_ONLY, op_tool
 from .draw import Blend, CreateCel, DrawFrame, DrawLayer, runs_op
 
 Text = Annotated[
@@ -34,7 +34,13 @@ Size = Annotated[
 Bold = Annotated[bool, Field(description="Thicken the glyphs by 1 px to the right")]
 LetterSpacing = Annotated[int, Field(ge=-8, le=32, description="Extra px between characters")]
 LineSpacing = Annotated[int, Field(ge=-64, le=256, description="Extra px between lines")]
-ShadowOffset = Annotated[int, Field(ge=-fonts.MAX_SHADOW, le=fonts.MAX_SHADOW)]
+ShadowX = Annotated[
+    int,
+    Field(ge=-fonts.MAX_SHADOW, le=fonts.MAX_SHADOW, description="Shadow offset to the right"),
+]
+ShadowY = Annotated[
+    int, Field(ge=-fonts.MAX_SHADOW, le=fonts.MAX_SHADOW, description="Shadow offset downwards")
+]
 Anchor = Literal[
     "top_left",
     "top",
@@ -80,12 +86,12 @@ def image_runs(image: Image.Image, left: int, top: int) -> list[tuple[RGBA, rast
     return list(by_color.items())
 
 
-@server.mcp.tool()
+@server.mcp.tool(annotations=READ_ONLY)
 def list_fonts(
     query: Annotated[
         str | None, Field(description="Only fonts whose name or file name contains this")
     ] = None,
-    limit: Annotated[int, Field(ge=1, le=1000)] = 100,
+    limit: Annotated[int, Field(ge=1, le=1000, description="Most fonts to list")] = 100,
 ) -> dict[str, Any]:
     """List installed fonts usable as draw_text's font, sorted by name.
 
@@ -108,7 +114,7 @@ def list_fonts(
     }
 
 
-@server.mcp.tool()
+@server.mcp.tool(annotations=READ_ONLY)
 def measure_text(
     text: Text,
     font: FontName = None,
@@ -116,9 +122,11 @@ def measure_text(
     bold: Bold = False,
     letter_spacing: LetterSpacing = 0,
     line_spacing: LineSpacing = 0,
-    outline_width: Annotated[int, Field(ge=0, le=fonts.MAX_OUTLINE)] = 0,
-    shadow_dx: ShadowOffset = 0,
-    shadow_dy: ShadowOffset = 0,
+    outline_width: Annotated[
+        int, Field(ge=0, le=fonts.MAX_OUTLINE, description="Outline thickness; 0 for none")
+    ] = 0,
+    shadow_dx: ShadowX = 0,
+    shadow_dy: ShadowY = 0,
 ) -> dict[str, Any]:
     """Size in pixels that draw_text would paint for this text, without a sprite.
 
@@ -148,8 +156,8 @@ def measure_text(
 @op_tool("draw_text", mutates=True)
 def draw_text(
     text: Text,
-    x: Coord,
-    y: Coord,
+    x: Annotated[Coord, Field(description="Canvas x of the anchor point")],
+    y: Annotated[Coord, Field(description="Canvas y of the anchor point")],
     color: Color,
     font: FontName = None,
     size: Size = 16,
@@ -165,10 +173,12 @@ def draw_text(
     outline: Annotated[
         Color | None, Field(description="Colour of a ring around the glyphs")
     ] = None,
-    outline_width: Annotated[int, Field(ge=1, le=fonts.MAX_OUTLINE)] = 1,
+    outline_width: Annotated[
+        int, Field(ge=1, le=fonts.MAX_OUTLINE, description="Outline thickness in pixels")
+    ] = 1,
     shadow: Annotated[Color | None, Field(description="Colour of a drop shadow")] = None,
-    shadow_dx: ShadowOffset = 1,
-    shadow_dy: ShadowOffset = 1,
+    shadow_dx: ShadowX = 1,
+    shadow_dy: ShadowY = 1,
     letter_spacing: LetterSpacing = 0,
     line_spacing: LineSpacing = 0,
     layer: DrawLayer = "",

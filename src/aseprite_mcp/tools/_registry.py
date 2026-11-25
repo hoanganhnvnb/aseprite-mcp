@@ -7,10 +7,11 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Annotated, Any
 
+from mcp.types import ToolAnnotations
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, create_model
 
 from .. import server
-from ..errors import ToolError
+from ..errors import ToolError, describe_invalid
 from ..ops import Op, output_file, run_ops
 from ..paths import check_save_extension, resolve_path, same_file
 
@@ -22,6 +23,8 @@ SpritePath = Annotated[
     str,
     Field(description="Sprite file. Relative paths resolve against the server root."),
 ]
+
+READ_ONLY = ToolAnnotations(readOnlyHint=True)
 
 # tool name -> (op name, mutates, builder)
 BATCHABLE: dict[str, tuple[str, bool, Builder]] = {}
@@ -102,7 +105,8 @@ def op_tool(
             parameters=[path_param, *signature.parameters.values()],
             return_annotation=dict[str, Any],
         )
-        server.mcp.add_tool(tool, name=name)
+        read_only = not mutates and writes is None
+        server.mcp.add_tool(tool, name=name, annotations=READ_ONLY if read_only else None)
         BATCHABLE[name] = (op, mutates, builder)
         _EXTRA[name] = _Extra(path_arg, writes, reads, _args_model(name, signature), finish)
         return tool
@@ -170,11 +174,7 @@ def batch_op(index: int, tool: str, args: dict[str, Any], path: Path) -> Op:
         valid = {name: getattr(model, name) for name in type(model).model_fields}
         return make_op(tool, builder(**valid), path, valid.get("overwrite", False))
     except ValidationError as e:
-        problems = "; ".join(
-            f"{'.'.join(str(part) for part in err['loc']) or 'args'}: {err['msg']}"
-            for err in e.errors()
-        )
-        raise ToolError(f"op {index} ({tool}): invalid arguments: {problems}") from None
+        raise ToolError(f"op {index} ({tool}): invalid arguments: {describe_invalid(e)}") from None
     except (ToolError, ValueError) as e:
         raise ToolError(f"op {index} ({tool}): {e}") from None
 

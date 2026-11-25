@@ -26,7 +26,11 @@ Blend = Annotated[
         "true: the colour is alpha-blended over what is there"
     ),
 ]
-Thickness = Annotated[int, Field(ge=1, le=64)]
+Thickness = Annotated[int, Field(ge=1, le=64, description="Brush size in pixels")]
+Fill = Annotated[bool, Field(description="Fill the shape; false draws the outline only")]
+Area = Annotated[Rect, Field(description="Canvas rectangle to paint")]
+Left = Annotated[Coord, Field(description="Canvas x of the top-left pixel")]
+Top = Annotated[Coord, Field(description="Canvas y of the top-left pixel")]
 
 
 def rgba(color: str) -> list[int]:
@@ -43,7 +47,10 @@ def points_list(points: list[Point]) -> list[list[int]]:
 
 @op_tool("draw_pixels", mutates=True)
 def draw_pixels(
-    pixels: Annotated[list[Pixel], Field(min_length=1, max_length=MAX_PIXELS)],
+    pixels: Annotated[
+        list[Pixel],
+        Field(min_length=1, max_length=MAX_PIXELS, description="Pixels as {x, y, color}"),
+    ],
     layer: DrawLayer = "",
     frame: DrawFrame = 1,
     create_cel: CreateCel = True,
@@ -64,7 +71,10 @@ def draw_pixels(
 
 @op_tool("draw_line", mutates=True)
 def draw_line(
-    points: Annotated[list[Point], Field(min_length=2, max_length=MAX_POINTS)],
+    points: Annotated[
+        list[Point],
+        Field(min_length=2, max_length=MAX_POINTS, description="Line vertices as {x, y}, in order"),
+    ],
     color: Color,
     thickness: Thickness = 1,
     closed: Annotated[bool, Field(description="Also connect the last point to the first")] = False,
@@ -92,9 +102,9 @@ def draw_line(
 
 @op_tool("draw_rect", mutates=True)
 def draw_rect(
-    rect: Rect,
+    rect: Annotated[Rect, Field(description="Rectangle in canvas pixels")],
     color: Color,
-    fill: bool = False,
+    fill: Fill = False,
     thickness: Annotated[
         int, Field(ge=1, le=64, description="Outline width inside the rect; ignored with fill")
     ] = 1,
@@ -119,12 +129,12 @@ def draw_rect(
 
 @op_tool("draw_ellipse", mutates=True)
 def draw_ellipse(
-    cx: Coord,
-    cy: Coord,
-    rx: Annotated[int, Field(ge=0, le=4096)],
-    ry: Annotated[int, Field(ge=0, le=4096)],
+    cx: Annotated[Coord, Field(description="Centre x")],
+    cy: Annotated[Coord, Field(description="Centre y")],
+    rx: Annotated[int, Field(ge=0, le=4096, description="Horizontal radius in pixels")],
+    ry: Annotated[int, Field(ge=0, le=4096, description="Vertical radius in pixels")],
     color: Color,
-    fill: bool = False,
+    fill: Fill = False,
     layer: DrawLayer = "",
     frame: DrawFrame = 1,
     create_cel: CreateCel = True,
@@ -149,9 +159,12 @@ def draw_ellipse(
 
 @op_tool("draw_polygon", mutates=True)
 def draw_polygon(
-    points: Annotated[list[Point], Field(min_length=3, max_length=MAX_POINTS)],
+    points: Annotated[
+        list[Point],
+        Field(min_length=3, max_length=MAX_POINTS, description="Corners as {x, y}, in order"),
+    ],
     color: Color,
-    fill: bool = True,
+    fill: Fill = True,
     layer: DrawLayer = "",
     frame: DrawFrame = 1,
     create_cel: CreateCel = True,
@@ -173,8 +186,8 @@ def draw_polygon(
 
 @op_tool("fill_area", mutates=True)
 def fill_area(
-    x: Coord,
-    y: Coord,
+    x: Annotated[Coord, Field(description="Seed pixel x")],
+    y: Annotated[Coord, Field(description="Seed pixel y")],
     color: Color,
     contiguous: Annotated[
         bool, Field(description="false: replace every matching pixel of the layer's canvas")
@@ -204,15 +217,24 @@ def fill_area(
 
 
 MATRIX_SIZE = {"bayer2": 2, "bayer4": 4, "bayer8": 8}
-Matrix = Literal["bayer2", "bayer4", "bayer8"]
+Matrix = Annotated[
+    Literal["bayer2", "bayer4", "bayer8"], Field(description="Bayer matrix size of the pattern")
+]
 
 
 @op_tool("draw_gradient", mutates=True)
 def draw_gradient(
-    rect: Rect,
-    colors: Annotated[list[Color], Field(min_length=2, max_length=16)],
-    direction: Literal["horizontal", "vertical"] = "horizontal",
-    dither: Literal["none", "bayer2", "bayer4", "bayer8"] = "none",
+    rect: Area,
+    colors: Annotated[
+        list[Color], Field(min_length=2, max_length=16, description="Gradient stops, evenly spaced")
+    ],
+    direction: Annotated[
+        Literal["horizontal", "vertical"], Field(description="horizontal runs left to right")
+    ] = "horizontal",
+    dither: Annotated[
+        Literal["none", "bayer2", "bayer4", "bayer8"],
+        Field(description="Ordered dithering between stops; none gives hard bands"),
+    ] = "none",
     layer: DrawLayer = "",
     frame: DrawFrame = 1,
     create_cel: CreateCel = True,
@@ -240,7 +262,7 @@ def draw_gradient(
 
 @op_tool("fill_pattern", mutates=True)
 def fill_pattern(
-    rect: Rect,
+    rect: Area,
     color_a: Color,
     color_b: Color,
     density: Annotated[float, Field(ge=0, le=1, description="Share of pixels that get color_b")],
@@ -287,11 +309,11 @@ def runs_op(
 
 @op_tool("draw_runs", mutates=True)
 def draw_ascii(
-    x: Coord,
-    y: Coord,
+    x: Left,
+    y: Top,
     rows: Annotated[
         list[Annotated[str, Field(min_length=1, max_length=256)]],
-        Field(min_length=1, max_length=256),
+        Field(min_length=1, max_length=256, description="Art rows, top to bottom"),
     ],
     legend: Annotated[
         dict[str, Color], Field(min_length=1, max_length=256, description="Character -> colour")
@@ -332,8 +354,8 @@ def draw_ascii(
 
 @op_tool("draw_runs", mutates=True)
 def draw_isometric_box(
-    x: Coord,
-    y: Coord,
+    x: Annotated[Coord, Field(description="x of the top corner of the top face")],
+    y: Annotated[Coord, Field(description="y of the top corner of the top face")],
     w: Annotated[int, Field(ge=1, le=128, description="Tiles along the right-going axis")],
     d: Annotated[int, Field(ge=1, le=128, description="Tiles along the left-going axis")],
     h: Annotated[int, Field(ge=0, le=256, description="Height of the side faces in pixels")],

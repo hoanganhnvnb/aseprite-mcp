@@ -13,7 +13,6 @@ MIN_SCALE = 0.05
 MAX_OFFSET = 65535
 
 Coord = Annotated[int, Field(ge=-MAX_OFFSET, le=MAX_OFFSET)]
-Opacity = Annotated[int, Field(ge=0, le=255)]
 
 
 class XY(BaseModel):
@@ -41,11 +40,14 @@ def _at_least_two(frames: list[int] | str, tool: str) -> None:
 def set_cel(
     layer: LayerRef,
     frames: FrameSpec,
-    x: Coord | None = None,
-    y: Coord | None = None,
+    x: Annotated[Coord | None, Field(description="Cel left edge in sprite pixels")] = None,
+    y: Annotated[Coord | None, Field(description="Cel top edge in sprite pixels")] = None,
     relative: Annotated[bool, Field(description="Move by x/y instead of moving to x/y")] = False,
-    opacity: Opacity | None = None,
-    z_index: Annotated[int | None, Field(ge=-32768, le=32767)] = None,
+    opacity: Annotated[int | None, Field(ge=0, le=255, description="Cel opacity, 0..255")] = None,
+    z_index: Annotated[
+        int | None,
+        Field(ge=-32768, le=32767, description="Draw order offset against other layers' cels"),
+    ] = None,
     create: Annotated[
         bool, Field(description="Create an empty cel where the layer has none")
     ] = False,
@@ -110,11 +112,14 @@ def _tween_values(prop: str, start: float | XY, end: float | XY) -> tuple[Any, A
 def tween_cels(
     layer: LayerRef,
     frames: FrameSpec,
-    property: Literal["position", "opacity", "scale"],
+    property: Annotated[
+        Literal["position", "opacity", "scale"], Field(description="What to animate")
+    ],
     start: TweenValue,
     end: TweenValue,
-    easing: Literal[
-        "linear", "ease_in", "ease_out", "ease_in_out", "ease_out_back", "bounce"
+    easing: Annotated[
+        Literal["linear", "ease_in", "ease_out", "ease_in_out", "ease_out_back", "bounce"],
+        Field(description="How the value moves from start to end"),
     ] = "linear",
     source_frame: Annotated[
         int | None,
@@ -165,9 +170,11 @@ Amplitude = Annotated[float, Field(ge=-4096, le=4096, allow_inf_nan=False)]
 def oscillate_cels(
     layer: LayerRef,
     frames: FrameSpec,
-    amplitude_x: Amplitude = 0,
-    amplitude_y: Amplitude = 0,
-    cycles: Annotated[float, Field(ge=0.1, le=64)] = 1.0,
+    amplitude_x: Annotated[Amplitude, Field(description="Horizontal swing in pixels")] = 0,
+    amplitude_y: Annotated[Amplitude, Field(description="Vertical swing in pixels")] = 0,
+    cycles: Annotated[
+        float, Field(ge=0.1, le=64, description="Full waves across the frames")
+    ] = 1.0,
     phase: Annotated[
         float, Field(ge=-64, le=64, allow_inf_nan=False, description="Offset in cycles")
     ] = 0.0,

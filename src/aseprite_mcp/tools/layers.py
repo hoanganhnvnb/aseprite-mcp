@@ -8,7 +8,8 @@ LayerRef = Annotated[
     str,
     Field(min_length=1, description="Layer name, or a 'group/child' path for nested layers"),
 ]
-LayerName = Annotated[str, Field(min_length=1)]
+LayerName = Annotated[str, Field(min_length=1, description="Layer name")]
+NewName = Annotated[str | None, Field(min_length=1, description="New layer name")]
 BlendMode = Literal[
     "normal",
     "multiply",
@@ -35,7 +36,9 @@ BlendMode = Literal[
 @op_tool("add_layer", mutates=True)
 def add_layer(
     name: LayerName,
-    kind: Literal["normal", "group", "tilemap"] = "normal",
+    kind: Annotated[
+        Literal["normal", "group", "tilemap"], Field(description="What to add")
+    ] = "normal",
     parent: Annotated[
         str, Field(description="Group to add the layer to; empty for the top level")
     ] = "",
@@ -57,13 +60,13 @@ def add_layer(
 @op_tool("update_layer", mutates=True)
 def update_layer(
     layer: LayerRef,
-    new_name: LayerName | None = None,
-    visible: bool | None = None,
+    new_name: NewName = None,
+    visible: Annotated[bool | None, Field(description="Show or hide the layer")] = None,
     locked: Annotated[
         bool | None, Field(description="Lock or unlock the layer against pixel and cel edits")
     ] = None,
-    opacity: Annotated[int | None, Field(ge=0, le=255)] = None,
-    blend_mode: BlendMode | None = None,
+    opacity: Annotated[int | None, Field(ge=0, le=255, description="Layer opacity, 0..255")] = None,
+    blend_mode: Annotated[BlendMode | None, Field(description="Layer blend mode")] = None,
     parent: Annotated[
         str | None,
         Field(description="Group to move the layer into; empty string for the top level"),
@@ -105,7 +108,7 @@ def delete_layer(layer: LayerRef) -> dict[str, Any]:
 
 
 @op_tool("duplicate_layer", mutates=True)
-def duplicate_layer(layer: LayerRef, new_name: LayerName | None = None) -> dict[str, Any]:
+def duplicate_layer(layer: LayerRef, new_name: NewName = None) -> dict[str, Any]:
     """Copy a layer (a group with all its children) right above the original.
 
     The copy is named new_name, or "<name> copy". Returns the copy's path.

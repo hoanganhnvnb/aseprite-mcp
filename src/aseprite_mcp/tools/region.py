@@ -18,7 +18,7 @@ WholeSprite = Annotated[
 @op_tool("move_region", mutates=True)
 def move_region(
     layer: LayerRef,
-    rect: Rect,
+    rect: Annotated[Rect, Field(description="Canvas rectangle to move")],
     dx: Offset,
     dy: Offset,
     frame: FrameNumber = 1,
@@ -65,7 +65,11 @@ def move_region(
 
 
 @op_tool("erase_region", mutates=True)
-def erase_region(layer: LayerRef, rect: Rect, frames: FrameSpec = 1) -> dict[str, Any]:
+def erase_region(
+    layer: LayerRef,
+    rect: Annotated[Rect, Field(description="Canvas rectangle to clear")],
+    frames: FrameSpec = 1,
+) -> dict[str, Any]:
     """Make the pixels of a layer inside rect transparent in each of the frames.
 
     On the background layer, which cannot be transparent, they turn opaque black.
@@ -78,7 +82,10 @@ def erase_region(layer: LayerRef, rect: Rect, frames: FrameSpec = 1) -> dict[str
 
 @op_tool("flip", mutates=True)
 def flip(
-    axis: Literal["horizontal", "vertical"],
+    axis: Annotated[
+        Literal["horizontal", "vertical"],
+        Field(description="horizontal mirrors left-right, vertical mirrors top-bottom"),
+    ],
     layer: WholeSprite = None,
     frames: FrameSpec = "all",
 ) -> dict[str, Any]:

@@ -6,7 +6,7 @@ from ..colors import parse_color
 from ..models import Color, Point, Rect
 from ._registry import op_tool
 
-SliceName = Annotated[str, Field(min_length=1, max_length=256)]
+SliceName = Annotated[str, Field(min_length=1, max_length=256, description="Slice name")]
 Center = Annotated[
     Rect | None,
     Field(description="9-slice centre, relative to the slice's top-left; must fit inside it"),
@@ -42,10 +42,12 @@ def _list_result(result: dict[str, Any], _: dict[str, Any]) -> dict[str, Any]:
 @op_tool("create_slice", mutates=True, finish=_slice_result)
 def create_slice(
     name: SliceName,
-    rect: Rect,
+    rect: Annotated[Rect, Field(description="Slice bounds in canvas pixels")],
     center: Center = None,
     pivot: Pivot = None,
-    color: Color | None = None,
+    color: Annotated[
+        Color | None, Field(description="Colour the editor shows the slice in")
+    ] = None,
 ) -> dict[str, Any]:
     """Add a named slice over rect (canvas pixels); names must be unique.
 
@@ -64,7 +66,7 @@ def create_slice(
 @op_tool("update_slice", mutates=True, finish=_slice_result)
 def update_slice(
     name: SliceName,
-    rect: Rect | None = None,
+    rect: Annotated[Rect | None, Field(description="New bounds in canvas pixels")] = None,
     center: Center = None,
     pivot: Pivot = None,
 ) -> dict[str, Any]:

@@ -37,7 +37,7 @@ def _info_result(result: dict[str, Any], _: dict[str, Any]) -> dict[str, Any]:
 @op_tool("get_tilemap_info", mutates=False, finish=_info_result)
 def get_tilemap_info(
     layer: TilemapLayer,
-    frame: Annotated[int, Field(ge=1)] = 1,
+    frame: Annotated[int, Field(ge=1, description="1-based frame number")] = 1,
     rect: Annotated[
         Rect | None,
         Field(description="Cells to read, in tiles: x=col, y=row, w and h; default whole grid"),
@@ -73,7 +73,14 @@ def draw_tile(
         int,
         Field(ge=1, description="Tile to paint; the tileset's tile count adds a new tile"),
     ],
-    pixels: Annotated[list[Pixel], Field(min_length=1, max_length=MAX_TILE_PIXELS)],
+    pixels: Annotated[
+        list[Pixel],
+        Field(
+            min_length=1,
+            max_length=MAX_TILE_PIXELS,
+            description="Pixels as {x, y, color} in the tile",
+        ),
+    ],
 ) -> dict[str, Any]:
     """Set pixels of one tile in the layer's tileset; x and y are inside the tile.
 
@@ -91,8 +98,11 @@ def draw_tile(
 @op_tool("set_tiles", mutates=True)
 def set_tiles(
     layer: TilemapLayer,
-    frame: Annotated[int, Field(ge=1)],
-    tiles: Annotated[list[TileCell], Field(min_length=1, max_length=MAX_TILES)],
+    frame: Annotated[int, Field(ge=1, description="1-based frame number")],
+    tiles: Annotated[
+        list[TileCell],
+        Field(min_length=1, max_length=MAX_TILES, description="Cells as {col, row, index}"),
+    ],
 ) -> dict[str, Any]:
     """Place tiles in grid cells (col, row from 0 at the grid origin) of one frame.
 

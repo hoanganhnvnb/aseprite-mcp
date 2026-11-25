@@ -8,7 +8,7 @@ from ..colors import PALETTES, PaletteName, generate_ramp, parse_color
 from ..errors import ToolError
 from ..models import Color, Rect
 from ..ranges import FrameSpec
-from ._registry import op_tool
+from ._registry import READ_ONLY, op_tool
 from .layers import LayerRef
 
 # The matrices Aseprite ships in data/convmatr.def, in file order.
@@ -120,10 +120,10 @@ def set_palette(
     return {"colors": [rgba(c) for c in chosen or []]}
 
 
-@server.mcp.tool()
+@server.mcp.tool(annotations=READ_ONLY)
 def generate_color_ramp(
     base_color: Color,
-    steps: Annotated[int, Field(ge=2, le=16)] = 5,
+    steps: Annotated[int, Field(ge=2, le=16, description="Number of colours in the ramp")] = 5,
     hue_shift: Annotated[
         float,
         Field(ge=0, le=60, description="Degrees the hue turns per step away from the base"),
@@ -190,11 +190,11 @@ def adjust_colors(
     frames: FrameSpec = 1,
     region: Region = None,
     hue: Annotated[int, Field(ge=-180, le=180, description="Degrees to turn the hue")] = 0,
-    saturation: Percent = 0,
-    lightness: Percent = 0,
-    brightness: Percent = 0,
-    contrast: Percent = 0,
-    invert: bool = False,
+    saturation: Annotated[Percent, Field(description="Saturation change, -100..100")] = 0,
+    lightness: Annotated[Percent, Field(description="Lightness change, -100..100")] = 0,
+    brightness: Annotated[Percent, Field(description="Brightness change, -100..100")] = 0,
+    contrast: Annotated[Percent, Field(description="Contrast change, -100..100")] = 0,
+    invert: Annotated[bool, Field(description="Invert the RGB channels")] = False,
 ) -> dict[str, Any]:
     """Adjust the colours of a layer with Aseprite's filters; alpha is never changed.
 
@@ -264,7 +264,7 @@ def outline(
 @op_tool("apply_convolution", mutates=True)
 def apply_convolution(
     layer: LayerRef,
-    matrix: ConvolutionMatrix,
+    matrix: Annotated[ConvolutionMatrix, Field(description="Which convolution matrix to run")],
     frames: FrameSpec = 1,
     region: Region = None,
 ) -> dict[str, Any]:
@@ -294,7 +294,9 @@ def quantize_to_palette(layer: LayerRef, frames: FrameSpec = 1) -> dict[str, Any
 
 @op_tool("extract_palette", mutates=False)
 def extract_palette(
-    max_colors: Annotated[int, Field(ge=2, le=256)] = 16,
+    max_colors: Annotated[
+        int, Field(ge=2, le=256, description="Most colours to return, counting a transparent slot")
+    ] = 16,
     with_alpha: Annotated[
         bool, Field(description="Keep semi-transparent colours apart instead of opaque")
     ] = False,

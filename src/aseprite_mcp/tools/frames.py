@@ -14,7 +14,7 @@ TagName = Annotated[str, Field(min_length=1, description="Tag name, matched exac
 
 @op_tool("add_frames", mutates=True)
 def add_frames(
-    count: Annotated[int, Field(ge=1, le=MAX_NEW_FRAMES)] = 1,
+    count: Annotated[int, Field(ge=1, le=MAX_NEW_FRAMES, description="Frames to add")] = 1,
     after: Annotated[
         int | None,
         Field(ge=0, description="Insert after this frame; 0 inserts at the start, null appends"),
@@ -22,7 +22,9 @@ def add_frames(
     duration_ms: Annotated[
         int | None, Field(ge=1, le=65535, description="Duration of the new frames")
     ] = None,
-    copy_content: bool = False,
+    copy_content: Annotated[
+        bool, Field(description="Copy the cels of the frame before the new ones")
+    ] = False,
 ) -> dict[str, Any]:
     """Insert frames, empty unless copy_content is true. Returns the new frame numbers.
 
@@ -76,8 +78,11 @@ def copy_frames(
             description="Layers to copy (a group means all layers in it); null for all",
         ),
     ] = None,
-    mode: Literal["replace", "missing_only"] = "replace",
-    link: bool = False,
+    mode: Annotated[
+        Literal["replace", "missing_only"],
+        Field(description="replace every target cel, or fill only where a layer has none"),
+    ] = "replace",
+    link: Annotated[bool, Field(description="Make the copies linked cels")] = False,
 ) -> dict[str, Any]:
     """Copy the cels of one frame into other frames, layers inside groups included.
 
@@ -102,7 +107,10 @@ def set_tag(
     name: TagName,
     from_frame: FrameNumber,
     to_frame: FrameNumber,
-    direction: Literal["forward", "reverse", "pingpong", "pingpong_reverse"] = "forward",
+    direction: Annotated[
+        Literal["forward", "reverse", "pingpong", "pingpong_reverse"],
+        Field(description="Playback direction of the tag"),
+    ] = "forward",
     repeat: Annotated[
         int, Field(ge=0, le=65535, description="Times to play the tag; 0 loops forever")
     ] = 0,

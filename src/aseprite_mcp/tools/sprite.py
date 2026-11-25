@@ -13,8 +13,10 @@ from ._registry import SpritePath, op_tool
 
 MAX_CANVAS = 4096
 
-CanvasSize = Annotated[int, Field(ge=1, le=MAX_CANVAS)]
-ColorMode = Literal["rgb", "grayscale", "indexed"]
+Width = Annotated[int, Field(ge=1, le=MAX_CANVAS, description="Width in pixels")]
+Height = Annotated[int, Field(ge=1, le=MAX_CANVAS, description="Height in pixels")]
+ColorMode = Annotated[Literal["rgb", "grayscale", "indexed"], Field(description="Colour mode")]
+Overwrite = Annotated[bool, Field(description="Replace the file if it already exists")]
 
 
 def _new_sprite_path(path: str, overwrite: bool) -> Path:
@@ -32,11 +34,13 @@ def _new_sprite_path(path: str, overwrite: bool) -> Path:
 @server.mcp.tool()
 async def create_sprite(
     path: SpritePath,
-    width: CanvasSize,
-    height: CanvasSize,
+    width: Width,
+    height: Height,
     color_mode: ColorMode = "rgb",
-    background: Color | None = None,
-    overwrite: bool = False,
+    background: Annotated[
+        Color | None, Field(description="Fill colour of the layer; default transparent")
+    ] = None,
+    overwrite: Overwrite = False,
 ) -> dict[str, Any]:
     """Create a sprite file with one layer and one frame and return its info.
 
@@ -77,13 +81,15 @@ def set_color_mode(mode: ColorMode) -> dict[str, Any]:
 
 
 @op_tool("resize_sprite", mutates=True)
-def resize_sprite(width: CanvasSize, height: CanvasSize) -> dict[str, Any]:
+def resize_sprite(width: Width, height: Height) -> dict[str, Any]:
     """Scale the whole sprite (every layer and frame) to a new size, nearest-neighbour."""
     return {"width": width, "height": height}
 
 
 @op_tool("crop_sprite", mutates=True)
-def crop_sprite(rect: Rect) -> dict[str, Any]:
+def crop_sprite(
+    rect: Annotated[Rect, Field(description="Area to keep, in canvas pixels")],
+) -> dict[str, Any]:
     """Crop the canvas to rect in every layer and frame; rect must overlap the canvas."""
     if rect.w > MAX_CANVAS or rect.h > MAX_CANVAS:
         raise ValueError(f"crop size {rect.w}x{rect.h} exceeds {MAX_CANVAS}x{MAX_CANVAS}")
@@ -91,7 +97,12 @@ def crop_sprite(rect: Rect) -> dict[str, Any]:
 
 
 @op_tool("save_copy", mutates=False, writes="output")
-def save_copy(output: str, overwrite: bool = False) -> dict[str, Any]:
+def save_copy(
+    output: Annotated[
+        str, Field(description="File to write; relative paths resolve against the root")
+    ],
+    overwrite: Overwrite = False,
+) -> dict[str, Any]:
     """Write a copy of the sprite to another file, leaving the source untouched.
 
     The format follows the output extension (.aseprite, .png, .gif, ...); a multi-frame
