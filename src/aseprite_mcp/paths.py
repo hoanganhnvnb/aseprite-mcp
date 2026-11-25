@@ -1,3 +1,4 @@
+import os
 from pathlib import Path
 
 from .config import Settings
@@ -50,3 +51,12 @@ def check_save_extension(path: Path) -> None:
         shown = f"'.{ext}'" if ext else "no extension"
         allowed = ", ".join(sorted(SAVE_EXTENSIONS))
         raise ToolError(f"Aseprite cannot save {path.name} ({shown}); use one of: {allowed}")
+
+
+def same_file(a: Path, b: Path) -> bool:
+    if os.path.normcase(a) == os.path.normcase(b):
+        return True
+    try:
+        return a.exists() and b.exists() and a.samefile(b)
+    except OSError:
+        return False

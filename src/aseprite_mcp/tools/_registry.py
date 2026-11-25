@@ -12,7 +12,7 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError, create_model
 from .. import server
 from ..errors import ToolError
 from ..ops import Op, output_file, run_ops
-from ..paths import check_save_extension, resolve_path
+from ..paths import check_save_extension, resolve_path, same_file
 
 Builder = Callable[..., dict[str, Any]]
 # Turns the op's raw result into the tool result; gets the result and the op params.
@@ -110,18 +110,9 @@ def op_tool(
     return register
 
 
-def _same_file(a: Path, b: Path) -> bool:
-    if os.path.normcase(a) == os.path.normcase(b):
-        return True
-    try:
-        return a.exists() and b.exists() and a.samefile(b)
-    except OSError:
-        return False
-
-
 def _output_path(key: str, value: Any, overwrite: bool, sprite: Path) -> Path:
     final = resolve_path(str(value), server.get_settings(), must_exist=False)
-    if _same_file(final, sprite):
+    if same_file(final, sprite):
         raise ToolError(f"{key} must be a different file than the sprite itself")
     if final.is_dir():
         raise ToolError(f"{final} is a folder")
@@ -146,7 +137,7 @@ def make_op(tool: str, params: dict[str, Any], path: Path, overwrite: bool = Fal
     key = _EXTRA[tool].reads
     if key is not None:
         source = resolve_path(str(params[key]), server.get_settings(), must_exist=True)
-        if _same_file(source, path):
+        if same_file(source, path):
             raise ToolError(f"{key} must be a different file than the sprite itself")
         params[key] = str(source)
         reads.append(source)
