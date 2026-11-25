@@ -31,6 +31,9 @@ SAVE_EXTENSIONS = frozenset(
 def resolve_path(p: str, s: Settings, *, must_exist: bool) -> Path:
     if not p.strip():
         raise ToolError("Path must not be empty")
+    # Windows path handling lets a NUL byte through, so check it on every OS.
+    if "\0" in p:
+        raise ToolError(f"Invalid path {p!r}: it contains a NUL byte")
     try:
         path = Path(p).expanduser()
         if not path.is_absolute():

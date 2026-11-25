@@ -1,3 +1,4 @@
+import sys
 from pathlib import Path
 
 import pytest
@@ -112,11 +113,14 @@ def test_resolve_must_exist_accepts_directory(tmp_path):
     assert resolve_path("d", make_settings(tmp_path), must_exist=True).is_dir()
 
 
+@pytest.mark.skipif(
+    sys.platform == "win32", reason="Windows expands ~name to a guessed profile folder"
+)
 def test_resolve_unknown_user_raises_tool_error(tmp_path):
     with pytest.raises(ToolError):
         resolve_path("~no_such_user_xyz/x.aseprite", make_settings(tmp_path), must_exist=False)
 
 
 def test_resolve_nul_byte_raises_tool_error(tmp_path):
-    with pytest.raises(ToolError):
+    with pytest.raises(ToolError, match="NUL byte"):
         resolve_path("a\0b.aseprite", make_settings(tmp_path), must_exist=False)

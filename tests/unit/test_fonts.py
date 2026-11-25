@@ -120,10 +120,17 @@ def test_scan_lists_a_font_once_when_dirs_overlap(tmp_path):
     assert {f.path for f in found} == {inner / f"copy{real.path.suffix}"}
 
 
+def symlink_or_skip(link: Path, target: Path) -> None:
+    try:
+        link.symlink_to(target)
+    except (OSError, NotImplementedError):
+        pytest.skip("cannot create symlinks here")
+
+
 def test_scan_lists_a_symlinked_font_once(tmp_path):
     real = some_font()
     shutil.copy(real.path, tmp_path / f"a{real.path.suffix}")
-    (tmp_path / f"b{real.path.suffix}").symlink_to(tmp_path / f"a{real.path.suffix}")
+    symlink_or_skip(tmp_path / f"b{real.path.suffix}", tmp_path / f"a{real.path.suffix}")
 
     found = scan_fonts([tmp_path])
 
@@ -134,7 +141,7 @@ def test_scan_skips_files_that_are_not_fonts(tmp_path):
     (tmp_path / "broken.ttf").write_bytes(b"not a font at all")
     (tmp_path / "empty.otf").write_bytes(b"")
     (tmp_path / "notes.txt").write_text("hello")
-    (tmp_path / "dangling.ttf").symlink_to(tmp_path / "missing.ttf")
+    symlink_or_skip(tmp_path / "dangling.ttf", tmp_path / "missing.ttf")
 
     assert scan_fonts([tmp_path]) == []
 
