@@ -1,3 +1,6 @@
+import functools
+import re
+from collections.abc import Iterable
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -14,6 +17,11 @@ from .runner import (
 )
 
 MAIN_SCRIPT = LUA_DIR / "main.lua"
+OPS_DIR = LUA_DIR / "ops"
+
+_OP_DEFINITION = re.compile(r"^OPS\.(\w+)\s*=", re.MULTILINE)
+# run_lua scripts can call any op through OPS, so it gets every op file.
+_NEEDS_ALL_OPS = {"run_lua"}
 
 
 @dataclass
@@ -34,8 +42,23 @@ def output_file(final: Path) -> tuple[Path, Path]:
     return temp_sibling(final), final
 
 
-def op_files() -> list[str]:
-    return sorted(p.name for p in (LUA_DIR / "ops").glob("*.lua"))
+@functools.cache
+def op_owners() -> dict[str, str]:
+    """Op name -> the file in lua/ops that defines it."""
+    owners = {}
+    for path in sorted(OPS_DIR.glob("*.lua")):
+        for name in _OP_DEFINITION.findall(path.read_text(encoding="utf-8")):
+            owners[name] = path.name
+    return owners
+
+
+def op_files(names: Iterable[str]) -> list[str]:
+    """The op files a run of these ops has to load; unknown names need none."""
+    owners = op_owners()
+    wanted = set(names)
+    if wanted & _NEEDS_ALL_OPS:
+        return sorted(set(owners.values()))
+    return sorted({owners[name] for name in wanted if name in owners})
 
 
 async def run_ops(
@@ -55,7 +78,7 @@ async def run_ops(
             {"name": op.name, "label": op.label, "params": op.params, "mutates": op.mutates}
             for op in ops
         ],
-        "op_files": op_files(),
+        "op_files": op_files(op.name for op in ops),
         "create": create,
         "target": str(path) if path is not None else None,
     }
