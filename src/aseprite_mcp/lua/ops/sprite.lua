@@ -4,27 +4,10 @@ local MODE_NAMES = {
   [ColorMode.INDEXED] = "indexed",
 }
 
-local BLEND_NAMES = {
-  [BlendMode.NORMAL] = "normal",
-  [BlendMode.MULTIPLY] = "multiply",
-  [BlendMode.SCREEN] = "screen",
-  [BlendMode.OVERLAY] = "overlay",
-  [BlendMode.DARKEN] = "darken",
-  [BlendMode.LIGHTEN] = "lighten",
-  [BlendMode.COLOR_DODGE] = "color_dodge",
-  [BlendMode.COLOR_BURN] = "color_burn",
-  [BlendMode.HARD_LIGHT] = "hard_light",
-  [BlendMode.SOFT_LIGHT] = "soft_light",
-  [BlendMode.DIFFERENCE] = "difference",
-  [BlendMode.EXCLUSION] = "exclusion",
-  [BlendMode.HSL_HUE] = "hue",
-  [BlendMode.HSL_SATURATION] = "saturation",
-  [BlendMode.HSL_COLOR] = "color",
-  [BlendMode.HSL_LUMINOSITY] = "luminosity",
-  [BlendMode.ADDITION] = "addition",
-  [BlendMode.SUBTRACT] = "subtract",
-  [BlendMode.DIVIDE] = "divide",
-}
+local BLEND_NAMES = {}
+for name, mode in pairs(BLEND_MODES) do
+  BLEND_NAMES[mode] = name
+end
 
 local DIRECTION_NAMES = {
   [AniDir.FORWARD] = "forward",

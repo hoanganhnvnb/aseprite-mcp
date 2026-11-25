@@ -1,5 +1,6 @@
--- Test helper: sets and reads pixels of the first layer in frame 1 of the open sprite.
--- params: set = {{x, y, r, g, b, a}, ...}, get = {{x, y}, ...}
+-- Test helper: sets and reads pixels in frame 1 of the open sprite, on the first layer
+-- or on the layer named by params.layer.
+-- params: set = {{x, y, r, g, b, a}, ...}, get = {{x, y}, ...}, layer = name or nil
 
 local fh = assert(io.open(app.params.params, "rb"))
 local P = json.decode(fh:read("a"))
@@ -8,6 +9,10 @@ dofile(P.lua_dir .. "/prelude.lua")
 
 local spr = app.sprite
 local layer = spr.layers[1]
+if P.layer then
+  layer = find_layer(spr, P.layer)
+  assert(layer, "no layer " .. P.layer)
+end
 
 local function int(v)
   return math.floor(v)

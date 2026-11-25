@@ -6,6 +6,28 @@ function fail(msg)
   error({ user = msg }, 2)
 end
 
+BLEND_MODES = {
+  normal = BlendMode.NORMAL,
+  multiply = BlendMode.MULTIPLY,
+  screen = BlendMode.SCREEN,
+  overlay = BlendMode.OVERLAY,
+  darken = BlendMode.DARKEN,
+  lighten = BlendMode.LIGHTEN,
+  color_dodge = BlendMode.COLOR_DODGE,
+  color_burn = BlendMode.COLOR_BURN,
+  hard_light = BlendMode.HARD_LIGHT,
+  soft_light = BlendMode.SOFT_LIGHT,
+  difference = BlendMode.DIFFERENCE,
+  exclusion = BlendMode.EXCLUSION,
+  hue = BlendMode.HSL_HUE,
+  saturation = BlendMode.HSL_SATURATION,
+  color = BlendMode.HSL_COLOR,
+  luminosity = BlendMode.HSL_LUMINOSITY,
+  addition = BlendMode.ADDITION,
+  subtract = BlendMode.SUBTRACT,
+  divide = BlendMode.DIVIDE,
+}
+
 function need_sprite(ctx)
   if ctx.spr == nil then
     fail("no sprite is open")

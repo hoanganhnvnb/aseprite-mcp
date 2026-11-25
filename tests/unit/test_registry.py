@@ -87,3 +87,35 @@ async def test_registry_refuses_existing_output_without_overwrite_argument(sandb
 async def test_registry_refuses_unknown_output_extension(sandboxed: Path):
     with pytest.raises(ToolError, match=r"cannot save out\.xyz"):
         await mcp.call_tool("write_raw_output", {"path": "s.aseprite", "output": "out.xyz"})
+
+
+def test_layer_tools_are_batchable_mutations():
+    for name in ("add_layer", "update_layer", "delete_layer", "duplicate_layer"):
+        assert BATCHABLE[name][:2] == (name, True)
+    assert BATCHABLE["merge_layer_down"][:2] == ("merge_layer_down", True)
+    assert BATCHABLE["flatten_sprite"][:2] == ("flatten_sprite", True)
+
+
+async def test_add_layer_schema():
+    schema = await _schema("add_layer")
+
+    assert schema["required"] == ["path", "name"]
+    assert schema["properties"]["kind"]["enum"] == ["normal", "group", "tilemap"]
+    assert schema["properties"]["parent"]["default"] == ""
+
+
+async def test_update_layer_schema():
+    schema = await _schema("update_layer")
+
+    assert schema["required"] == ["path", "layer"]
+    blend = schema["properties"]["blend_mode"]["anyOf"][0]
+    assert blend["enum"][:3] == ["normal", "multiply", "screen"]
+    assert len(blend["enum"]) == 19
+    opacity = schema["properties"]["opacity"]["anyOf"][0]
+    assert (opacity["minimum"], opacity["maximum"]) == (0, 255)
+
+
+async def test_single_layer_tools_require_only_the_layer():
+    for name in ("delete_layer", "duplicate_layer", "merge_layer_down"):
+        assert (await _schema(name))["required"] == ["path", "layer"]
+    assert (await _schema("flatten_sprite"))["required"] == ["path"]

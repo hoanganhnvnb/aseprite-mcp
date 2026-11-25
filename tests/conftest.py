@@ -50,7 +50,7 @@ def call(ase_settings: Settings, monkeypatch: pytest.MonkeyPatch):
     """Calls a tool the way a client does, arguments validated by the server."""
     monkeypatch.setattr(server, "get_settings", lambda: ase_settings)
 
-    async def call_tool(name: str, **args):
+    async def call_tool(name: str, /, **args):
         _, structured = await server.mcp.call_tool(name, args)
         return structured
 
@@ -59,12 +59,20 @@ def call(ase_settings: Settings, monkeypatch: pytest.MonkeyPatch):
 
 @pytest.fixture
 def pixels(ase_settings: Settings):
-    """Sets pixels as (x, y, r, g, b, a) and reads pixels at (x, y) on the first layer."""
+    """Sets pixels as (x, y, r, g, b, a) and reads pixels at (x, y) in frame 1.
 
-    async def run(path: Path, put: Sequence = (), read: Sequence = ()) -> list[list[int]]:
+    Works on the first layer unless `layer` names another one.
+    """
+
+    async def run(
+        path: Path, put: Sequence = (), read: Sequence = (), layer: str | None = None
+    ) -> list[list[int]]:
+        params = {"set": [list(p) for p in put], "get": [list(r) for r in read]}
+        if layer is not None:
+            params["layer"] = layer
         result = await run_script(
             PIXELS_SCRIPT,
-            {"set": [list(p) for p in put], "get": [list(r) for r in read]},
+            params,
             settings=ase_settings,
             lock_paths=[path],
             open_file=path,
