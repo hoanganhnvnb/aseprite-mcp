@@ -10,7 +10,7 @@ from pathlib import Path
 import pytest
 
 from aseprite_mcp.config import Settings
-from aseprite_mcp.errors import AsepriteError
+from aseprite_mcp.errors import AsepriteError, ToolError
 from aseprite_mcp.runner import run_script
 
 FAKE = Path(__file__).parent.parent / "fake_aseprite.py"
@@ -199,3 +199,31 @@ async def test_numbered_save_files_are_removed(settings: Settings, tmp_path: Pat
 
     assert target.read_text() == "old"
     assert sorted(p.name for p in tmp_path.iterdir()) == ["anim.png", "bin"]
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="POSIX permission bits")
+async def test_save_keeps_file_mode(settings: Settings, tmp_path: Path):
+    target = tmp_path / "sprite.aseprite"
+    target.write_text("old")
+    target.chmod(0o640)
+
+    await run_script(SCRIPT, {"fake": "ok", "write_save": "new"}, settings=settings, save_to=target)
+
+    assert target.read_text() == "new"
+    assert stat.S_IMODE(target.stat().st_mode) == 0o640
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="POSIX permission bits")
+@pytest.mark.skipif(hasattr(os, "geteuid") and os.geteuid() == 0, reason="root can write anything")
+async def test_read_only_target_is_refused(settings: Settings, tmp_path: Path):
+    target = tmp_path / "sprite.aseprite"
+    target.write_text("old")
+    target.chmod(0o444)
+
+    with pytest.raises(ToolError, match="read-only"):
+        await run_script(
+            SCRIPT, {"fake": "ok", "write_save": "new"}, settings=settings, save_to=target
+        )
+
+    assert target.read_text() == "old"
+    assert stat.S_IMODE(target.stat().st_mode) == 0o444

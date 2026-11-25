@@ -1,11 +1,17 @@
-import os
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
 from .config import Settings
 from .errors import AsepriteError
-from .runner import LUA_DIR, remove_temp_files, run_script, temp_sibling
+from .runner import (
+    LUA_DIR,
+    check_writable,
+    remove_temp_files,
+    replace_file,
+    run_script,
+    temp_sibling,
+)
 
 MAIN_SCRIPT = LUA_DIR / "main.lua"
 
@@ -57,6 +63,8 @@ async def run_ops(
     lock_paths += [source for op in ops for source in op.reads]
     if path is not None:
         lock_paths.append(path)
+    for _, final in writes:
+        check_writable(final)
     try:
         result = await run_script(
             MAIN_SCRIPT,
@@ -69,7 +77,7 @@ async def run_ops(
         for tmp, final in writes:
             if not tmp.is_file():
                 raise AsepriteError(f"Aseprite could not write {final}")
-            os.replace(tmp, final)
+            replace_file(tmp, final)
     finally:
         for tmp, _ in writes:
             remove_temp_files(tmp)

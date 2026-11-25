@@ -3,6 +3,7 @@ import json
 import os
 import secrets
 import signal
+import stat
 import subprocess
 import sys
 import tempfile
@@ -15,7 +16,7 @@ from pathlib import Path
 from typing import Any
 
 from .config import Settings
-from .errors import AsepriteError
+from .errors import AsepriteError, ToolError
 
 LUA_DIR = Path(__file__).parent / "lua"
 STDERR_TAIL = 2048
@@ -61,6 +62,22 @@ def _tail(text: str) -> str:
 def temp_sibling(path: Path) -> Path:
     token = secrets.token_hex(4)
     return path.with_name(f".{path.stem}.{token}.tmp{path.suffix}")
+
+
+def check_writable(path: Path) -> None:
+    if path.exists() and not os.access(path, os.W_OK):
+        raise ToolError(f"{path} is read-only; make it writable first (nothing was changed)")
+
+
+def replace_file(tmp: Path, final: Path) -> None:
+    # The new file takes the place of the old one rather than overwriting it, so it
+    # gets the old file's permission bits here; hard links to the old file are broken.
+    if sys.platform != "win32":
+        try:
+            os.chmod(tmp, stat.S_IMODE(final.stat().st_mode))
+        except OSError:
+            pass
+    os.replace(tmp, final)
 
 
 def remove_temp_files(tmp: Path) -> None:
@@ -167,6 +184,8 @@ async def run_script(
         for key in keys:
             await stack.enter_async_context(state.file_locks.setdefault(key, asyncio.Lock()))
         await stack.enter_async_context(semaphore)
+        if save_to is not None:
+            check_writable(save_to)
         return await _run_locked(script, params, settings, open_file, save_to)
 
 
@@ -216,7 +235,7 @@ async def _run_locked(
         if save_to is not None and save_tmp is not None and data.get("saved"):
             if not save_tmp.exists():
                 raise AsepriteError(f"Aseprite reported a save but {save_tmp.name} is missing")
-            os.replace(save_tmp, save_to)
+            replace_file(save_tmp, save_to)
         return RunResult(data, stdout, stderr, time.monotonic() - started)
     finally:
         if save_tmp is not None:

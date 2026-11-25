@@ -1,3 +1,5 @@
+import os
+import sys
 from pathlib import Path
 
 import pytest
@@ -179,6 +181,20 @@ async def test_save_copy_refuses_existing_output(call, tmp_path: Path):
         await call("save_copy", path="a.aseprite", output="copy.png")
 
     assert (tmp_path / "copy.png").read_bytes() == b"keep me"
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="POSIX permission bits")
+@pytest.mark.skipif(hasattr(os, "geteuid") and os.geteuid() == 0, reason="root can write anything")
+async def test_save_copy_refuses_read_only_output(call, tmp_path: Path):
+    await call("create_sprite", path="a.aseprite", width=8, height=8)
+    output = tmp_path / "copy.png"
+    output.write_bytes(b"keep me")
+    output.chmod(0o444)
+
+    with pytest.raises(ToolError, match="read-only"):
+        await call("save_copy", path="a.aseprite", output="copy.png", overwrite=True)
+
+    assert output.read_bytes() == b"keep me"
 
 
 async def test_batch_save_copy_to_unknown_format_saves_nothing(call, tmp_path: Path):
