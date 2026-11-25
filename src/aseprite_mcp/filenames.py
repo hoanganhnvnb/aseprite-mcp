@@ -5,7 +5,9 @@ from collections.abc import Iterable
 MAX_STEM_BYTES = 100
 
 _FORBIDDEN = re.compile(r'[<>:"/\\|?*\x00-\x1f\x7f]')
-_RESERVED = {"con", "prn", "aux", "nul"} | {f"{p}{n}" for p in ("com", "lpt") for n in range(1, 10)}
+_RESERVED = {"con", "prn", "aux", "nul", "conin$", "conout$"} | {
+    f"{port}{n}" for port in ("com", "lpt") for n in [*"123456789", "\u00b9", "\u00b2", "\u00b3"]
+}
 
 
 def safe_stem(name: str, fallback: str = "layer") -> str:
@@ -19,7 +21,7 @@ def safe_stem(name: str, fallback: str = "layer") -> str:
     if not stem:
         return fallback
     # Windows refuses these names with any extension after them, e.g. "nul.txt.png".
-    if stem.split(".")[0].lower() in _RESERVED:
+    if stem.split(".")[0].rstrip(" ").lower() in _RESERVED:
         stem = "_" + stem
     return stem
 

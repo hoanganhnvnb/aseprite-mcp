@@ -72,7 +72,8 @@ end
 local function check_size(count, w, h, limit, what)
   if count * w * h > limit then
     fail(string.format("%s would be %d frame(s) of %dx%d px, too large (at most %d pixels "
-      .. "per file); use a smaller scale or fewer frames", what, count, w, h, limit))
+      .. "per export, all frames counted); use a smaller scale or fewer frames",
+      what, count, w, h, limit))
   end
 end
 
@@ -155,7 +156,7 @@ OPS.export_frames = function(ctx, p)
       error(err, 0)
     end
   else
-    check_size(1, w, h, p.max_pixels, "each image")
+    check_size(#frames, w, h, p.max_pixels, "the export")
     render_frames(spr, frames, p, function(n, image)
       local name = n .. "." .. p.ext
       image:saveAs(app.fs.joinPath(p.dir, name))
@@ -231,9 +232,11 @@ OPS.export_layers = function(ctx, p)
   return { frame = frame, layers = layers, hidden = hidden }
 end
 
--- p.image is a PNG the server converted to RGBA. Its pixels are drawn over the cel
--- (transparent ones leave what is there); indexed sprites get the nearest palette
--- entries, grayscale ones the luma.
+-- p.image is a PNG the server converted to RGBA; p.opaque counts its non-transparent
+-- pixels and p.colors its colours (nil when there are too many to count). Its pixels
+-- are drawn over the cel (transparent ones leave what is there); indexed sprites get
+-- the nearest palette entries, grayscale ones the luma. Pixels go through byte
+-- strings: per-pixel Image calls take minutes on large images.
 OPS.import_image = function(ctx, p)
   local spr = need_sprite(ctx)
   local layer, path = image_layer(spr, p.layer)
@@ -245,47 +248,33 @@ OPS.import_image = function(ctx, p)
   end
   local x, y = p.x or 0, p.y or 0
   local area = Rectangle(x, y, src.width, src.height):intersect(spr.bounds)
-  local result = {
-    layer = path, frame = frame, x = x, y = y,
-    width = src.width, height = src.height, placed = 0, clipped = 0,
-  }
-  local total = 0
-  for px in src:pixels() do
-    if pc.rgbaA(px()) > 0 then
-      total = total + 1
-    end
-  end
   if area.isEmpty then
     fail(string.format("the %dx%d image at (%d, %d) is outside the canvas (%d x %d)",
       src.width, src.height, x, y, spr.width, spr.height))
   end
-
-  local indexed = spr.colorMode == ColorMode.INDEXED
-  local patch = not indexed and new_image(spr, area.width, area.height)
-  local points, memo, placed = {}, {}, 0
-  for py = 0, area.height - 1 do
-    for qx = 0, area.width - 1 do
-      local v = src:getPixel(area.x - x + qx, area.y - y + py)
-      if pc.rgbaA(v) > 0 then
-        placed = placed + 1
-        if spr.colorMode == ColorMode.RGB then
-          patch:drawPixel(qx, py, v)
-        else
-          local c = memo[v]
-          if c == nil then
-            c = color_value(spr, { pc.rgbaR(v), pc.rgbaG(v), pc.rgbaB(v), pc.rgbaA(v) }, layer)
-            memo[v] = c
-          end
-          if indexed then
-            table.insert(points, { qx, py, c })
-          else
-            patch:drawPixel(qx, py, c)
-          end
-        end
-      end
+  local mode = spr.colorMode
+  if mode == ColorMode.INDEXED then
+    local work = p.colors and p.colors * #spr.palettes[1]
+    if work == nil or work > p.max_palette_work then
+      fail(string.format("the image has %s colours; matching them against the %d palette "
+        .. "entries is too much work (colours x entries at most %d). Reduce its colours "
+        .. "first, or import into an RGB sprite and convert it after",
+        p.colors and tostring(p.colors) or "too many", #spr.palettes[1], p.max_palette_work))
     end
   end
-  result.placed, result.clipped = placed, total - placed
+
+  local part = Image(src, Rectangle(area.x - x, area.y - y, area.width, area.height))
+  local bytes, byte, char = part.bytes, string.byte, string.char
+  local placed = 0
+  for i = 4, #bytes, 4 do
+    if byte(bytes, i) ~= 0 then
+      placed = placed + 1
+    end
+  end
+  local result = {
+    layer = path, frame = frame, x = x, y = y, width = src.width, height = src.height,
+    placed = placed, clipped = p.opaque - placed,
+  }
   if placed == 0 then
     ctx.changed = false
     return result
@@ -296,16 +285,43 @@ OPS.import_image = function(ctx, p)
     own_cel(spr, layer, cel, image_users(layer))
   end
   cel = ensure_cel_bounds(spr, layer, frame, area)
-  local ox, oy = area.x - cel.position.x, area.y - cel.position.y
-  if indexed then
-    -- Indices are written as they are: there is no blending, and on a background
-    -- layer the transparent index is an opaque colour drawImage would skip.
-    local img = cel.image
-    for _, q in ipairs(points) do
-      img:drawPixel(ox + q[1], oy + q[2], q[3])
-    end
-  else
-    cel.image:drawImage(patch, Point(ox, oy), 255, BlendMode.NORMAL)
+  local at = Point(area.x - cel.position.x, area.y - cel.position.y)
+  if mode == ColorMode.RGB then
+    cel.image:drawImage(part, at, 255, BlendMode.NORMAL)
+    return result
   end
+
+  local map = color_mapper(spr, layer)
+  local patch, old
+  if mode == ColorMode.INDEXED then
+    -- Indices cannot blend, and on a background layer the transparent index is an
+    -- opaque colour drawImage would skip; so the patch starts as a copy of the cel and
+    -- replaces it whole.
+    patch = Image(cel.image, Rectangle(at.x, at.y, area.width, area.height))
+    old = patch.bytes
+  else
+    patch = Image(ImageSpec { width = area.width, height = area.height, colorMode = mode })
+  end
+  local w, rows = area.width, {}
+  for row = 0, area.height - 1 do
+    local out = {}
+    for col = 0, w - 1 do
+      local i = (row * w + col) * 4 + 1
+      local r, g, b, a = byte(bytes, i, i + 3)
+      if mode == ColorMode.INDEXED then
+        out[col + 1] = a == 0 and old:sub(row * w + col + 1, row * w + col + 1)
+          or char(map(r, g, b, a))
+      elseif a == 0 then
+        out[col + 1] = "\0\0"
+      else
+        local v = map(r, g, b, a)
+        out[col + 1] = char(v & 255, v >> 8 & 255)
+      end
+    end
+    rows[row + 1] = table.concat(out)
+  end
+  patch.bytes = table.concat(rows)
+  local blend = mode == ColorMode.INDEXED and BlendMode.SRC or BlendMode.NORMAL
+  cel.image:drawImage(patch, at, 255, blend)
   return result
 end

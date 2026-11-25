@@ -53,3 +53,11 @@ def test_unique_stems_skip_a_suffix_already_taken():
 
 def test_unique_stems_leave_a_later_name_to_its_owner():
     assert unique_stems(["a", "a", "a_2"]) == ["a", "a_3", "a_2"]
+
+
+def test_safe_stem_prefixes_console_and_superscript_device_names():
+    assert safe_stem("CONIN$") == "_CONIN$"
+    assert safe_stem("conout$") == "_conout$"
+    assert safe_stem("COM¹") == "_COM¹"
+    assert safe_stem("lpt³.txt") == "_lpt³.txt"
+    assert safe_stem("COM0") == "COM0"

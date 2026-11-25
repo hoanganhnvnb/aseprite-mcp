@@ -28,8 +28,12 @@ IMAGE_EXTENSIONS = ("bmp", "png", "qoi", "tga")
 ANIMATED_EXTENSIONS = ("gif", "webp")
 EXPORT_EXTENSIONS = tuple(sorted(IMAGE_EXTENSIONS + ANIMATED_EXTENSIONS))
 MAX_SCALE = 32
-# Pixels in one written file, every frame of an animation or sheet counted.
-MAX_FILE_PIXELS = 4096 * 4096 * 4
+# Pixels one export call may write, every frame counted.
+MAX_EXPORT_PIXELS = 4096 * 4096 * 4
+# import_image into an indexed sprite compares every colour of the image with every
+# palette entry; this many comparisons take about a second.
+MAX_PALETTE_WORK = 1 << 24
+MAX_COUNTED_COLORS = 1 << 20
 # Coarse file systems (FAT) store modification times in 2-second steps.
 MTIME_SLACK = 2.0
 
@@ -136,7 +140,8 @@ async def export(
     exported in order whatever its direction. Hidden layers are left out; with layer,
     only that layer (or group) is shown, even when it is hidden, with its opacity and
     blend mode. The output folder must exist; existing files are refused unless
-    overwrite is true. Files are written completely or not at all. Not available in
+    overwrite is true. Files are written completely or not at all. One call writes
+    at most 67108864 pixels, all frames and the scale counted. Not available in
     batch. Returns the files written, the frames, the image size and total bytes.
     """
     settings = server.get_settings()
@@ -162,7 +167,7 @@ async def export(
             "layer": layer,
             "scale": scale,
             "background": None if background is None else list(parse_color(background)),
-            "max_pixels": MAX_FILE_PIXELS,
+            "max_pixels": MAX_EXPORT_PIXELS,
         }
         result = await run_op(sprite, "export_frames", params, settings=settings, mutates=False)
         rendered = [Path(tmp) / name for name in result["files"]]
@@ -242,7 +247,7 @@ async def export_spritesheet(
             "tag": tag,
             "scale": scale,
             "padding": padding,
-            "max_pixels": MAX_FILE_PIXELS,
+            "max_pixels": MAX_EXPORT_PIXELS,
         }
         result = await run_op(sprite, "export_sheet", params, settings=settings, mutates=False)
         with Image.open(texture) as img:
@@ -296,12 +301,21 @@ async def export_layers(
         targets = [folder / f"{stem}.png" for stem in stems]
         for final in targets:
             _check_target(final, sprite, overwrite)
+        new_dirs = [d for d in (folder, *folder.parents) if not d.exists()]
         folder.mkdir(parents=True, exist_ok=True)
-        _place(
-            [(Path(tmp) / entry["file"], final) for entry, final in zip(layers, targets)],
-            sprite,
-            overwrite,
-        )
+        try:
+            _place(
+                [(Path(tmp) / entry["file"], final) for entry, final in zip(layers, targets)],
+                sprite,
+                overwrite,
+            )
+        except BaseException:
+            for made in new_dirs:
+                try:
+                    made.rmdir()
+                except OSError:
+                    break
+            raise
     _check_written(targets, started)
     return {
         "frame": result["frame"],
@@ -312,8 +326,12 @@ async def export_layers(
     }
 
 
-def _load_rgba(source: Path, dest: Path) -> None:
-    """Converts the first frame of any image Pillow reads to an RGBA PNG at dest."""
+def _load_rgba(source: Path, dest: Path) -> tuple[int, int | None]:
+    """Writes the first frame of any image Pillow reads to dest as an RGBA PNG.
+
+    Returns the number of non-transparent pixels and of colours (None past
+    MAX_COUNTED_COLORS).
+    """
     try:
         with warnings.catch_warnings():
             warnings.simplefilter("error", Image.DecompressionBombWarning)
@@ -324,11 +342,15 @@ def _load_rgba(source: Path, dest: Path) -> None:
                         f"{source.name} is {w}x{h}, larger than {MAX_CANVAS}x{MAX_CANVAS}"
                     )
                 img.seek(0)
-                img.convert("RGBA").save(dest, "PNG")
+                rgba = img.convert("RGBA")
     except (Image.DecompressionBombError, Image.DecompressionBombWarning):
         raise ToolError(f"{source.name} is too large to import") from None
     except (UnidentifiedImageError, OSError, ValueError, SyntaxError) as e:
         raise ToolError(f"{source} is not an image Pillow can read: {e}") from None
+    rgba.save(dest, "PNG")
+    opaque = w * h - rgba.getchannel("A").histogram()[0]
+    colors = rgba.getcolors(MAX_COUNTED_COLORS)
+    return opaque, None if colors is None else len(colors)
 
 
 @server.mcp.tool()
@@ -349,8 +371,10 @@ async def import_image(
     non-transparent pixels drawn and dropped. The cel is created or grown as needed
     (a linked cel is unlinked first). Indexed sprites get the nearest palette entry
     for each colour (partly transparent pixels become opaque), grayscale ones the
-    luma. Locked layers, groups and tilemap layers are refused. Images up to
-    4096x4096. Not available in batch.
+    luma; for indexed sprites the image's colour count times the palette size may be
+    at most 16777216 (reduce the colours of photo-like images first). Locked layers,
+    groups and tilemap layers are refused. Images up to 4096x4096. Not available in
+    batch.
     """
     settings = server.get_settings()
     sprite = resolve_path(path, settings, must_exist=True)
@@ -359,8 +383,17 @@ async def import_image(
         raise ToolError(f"{source} is not a file")
     with tempfile.TemporaryDirectory(prefix="aseprite-mcp-import-") as tmp:
         converted = Path(tmp) / "image.png"
-        _load_rgba(source, converted)
-        params = {"image": str(converted), "layer": layer, "frame": frame, "x": x, "y": y}
+        opaque, colors = _load_rgba(source, converted)
+        params = {
+            "image": str(converted),
+            "opaque": opaque,
+            "colors": colors,
+            "max_palette_work": MAX_PALETTE_WORK,
+            "layer": layer,
+            "frame": frame,
+            "x": x,
+            "y": y,
+        }
         return await run_op(sprite, "import_image", params, settings=settings, mutates=True)
 
 
@@ -371,8 +404,12 @@ def start_preview(
 ) -> dict[str, Any]:
     """Serve a folder over HTTP on 127.0.0.1 so exported images can be opened in a browser.
 
-    Export into the folder, then open the returned URL (it lists the folder's files).
-    Only this machine can connect, only that folder is served, and nothing can be
+    Export into the folder, then open the returned URL exactly as given: its first
+    path segment is a secret token, and file URLs are the URL plus the file's path
+    inside the folder (e.g. url + "walk.gif"). The URL itself lists the folder. Only
+    this machine can connect, and only with 127.0.0.1 or localhost as the host name.
+    Only .png, .gif, .webp, .bmp, .tga, .qoi and .json files are served; dotfiles,
+    other files and anything outside the folder are not, and nothing can be
     uploaded. One preview runs at a time: starting it again for the same folder
     returns the running URL; for another folder call stop_preview first. The server
     stops when this program exits.

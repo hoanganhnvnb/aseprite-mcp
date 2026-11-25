@@ -747,3 +747,107 @@ async def test_spritesheet_leaves_out_hidden_layers(call, tmp_path):
     await call("export_spritesheet", path="a.aseprite", output="sheet.png")
 
     assert rgba(tmp_path / "sheet.png", (0, 0)) == (0, 0, 0, 0)
+
+
+async def test_export_caps_total_pixels_of_numbered_files(call, monkeypatch, tmp_path):
+    from aseprite_mcp.tools import export
+
+    await new_sprite(call)
+    await call("add_frames", path="a.aseprite", count=2)
+    monkeypatch.setattr(export, "MAX_EXPORT_PIXELS", 30)
+
+    await call("export", path="a.aseprite", output="one.png", frames="1")
+    with pytest.raises(ToolError, match="3 frame\\(s\\) of 4x3 px, too large"):
+        await call("export", path="a.aseprite", output="w.png", frames="all")
+
+    assert names(tmp_path) == ["a.aseprite", "one.png"]
+
+
+async def test_failed_export_layers_removes_the_folder_it_made(call, tmp_path, monkeypatch):
+    await new_sprite(call)
+
+    def failing_replace(src, dst):
+        raise OSError("disk full")
+
+    monkeypatch.setattr(os, "replace", failing_replace)
+
+    with pytest.raises(ToolError, match="disk full"):
+        await call("export_layers", path="a.aseprite", output_dir="new/parts")
+
+    assert names(tmp_path) == ["a.aseprite"]
+
+
+async def test_failed_export_layers_keeps_an_existing_folder(call, tmp_path, monkeypatch):
+    await new_sprite(call)
+    (tmp_path / "parts").mkdir()
+
+    def failing_replace(src, dst):
+        raise OSError("disk full")
+
+    monkeypatch.setattr(os, "replace", failing_replace)
+
+    with pytest.raises(ToolError, match="disk full"):
+        await call("export_layers", path="a.aseprite", output_dir="parts")
+
+    assert (tmp_path / "parts").is_dir()
+
+
+async def test_import_image_on_grayscale_sprite_uses_luma(call, pixels, tmp_path):
+    await new_sprite(call, color_mode="grayscale")
+    write_png(tmp_path / "in.png", {(0, 0): (255, 0, 0, 255), (1, 0): (255, 255, 255, 128)})
+
+    await call("import_image", path="a.aseprite", image="in.png", layer="Layer 1")
+
+    assert await pixels(tmp_path / "a.aseprite", read=[(0, 0), (1, 0), (0, 1)]) == [
+        [54, 54, 54, 255],
+        [255, 255, 255, 128],
+        [0, 0, 0, 0],
+    ]
+
+
+async def test_import_image_on_indexed_background_keeps_index_zero(
+    call, pixels, set_palette, tmp_path
+):
+    await new_sprite(call, color_mode="indexed")
+    path = tmp_path / "a.aseprite"
+    await set_palette(path, [(0, 0, 0, 255), (250, 0, 0, 255), (0, 0, 250, 255)])
+    await pixels(path, put=[(1, 1, 0, 0, 250, 255)], background=True)
+    write_png(tmp_path / "in.png", {(0, 0): (5, 5, 5, 255)})
+
+    await call("import_image", path="a.aseprite", image="in.png", layer="Background")
+
+    assert await pixels(path, read=[(0, 0), (1, 1)], layer="Background", values=True) == [0, 2]
+
+
+async def test_import_image_with_too_many_colours_for_indexed(call, monkeypatch, tmp_path):
+    from aseprite_mcp.tools import export
+
+    await new_sprite(call, color_mode="indexed")
+    monkeypatch.setattr(export, "MAX_PALETTE_WORK", 50)
+    write_png(tmp_path / "in.png", {(0, 0): (255, 0, 0, 255), (1, 0): (0, 0, 255, 255)})
+
+    with pytest.raises(ToolError, match="the image has 3 colours; .* too much work"):
+        await call("import_image", path="a.aseprite", image="in.png", layer="Layer 1")
+
+
+async def test_import_image_counts_colours_in_python_past_the_limit(call, monkeypatch, tmp_path):
+    from aseprite_mcp.tools import export
+
+    await new_sprite(call, color_mode="indexed")
+    monkeypatch.setattr(export, "MAX_COUNTED_COLORS", 2)
+    write_png(tmp_path / "in.png", {(0, 0): (255, 0, 0, 255), (1, 0): (0, 0, 255, 255)})
+
+    with pytest.raises(ToolError, match="the image has too many colours"):
+        await call("import_image", path="a.aseprite", image="in.png", layer="Layer 1")
+
+
+async def test_import_image_into_rgb_sprite_has_no_colour_limit(call, monkeypatch, tmp_path):
+    from aseprite_mcp.tools import export
+
+    await new_sprite(call)
+    monkeypatch.setattr(export, "MAX_PALETTE_WORK", 1)
+    write_png(tmp_path / "in.png", {(0, 0): (255, 0, 0, 255), (1, 0): (0, 0, 255, 255)})
+
+    result = await call("import_image", path="a.aseprite", image="in.png", layer="Layer 1")
+
+    assert result["placed"] == 2

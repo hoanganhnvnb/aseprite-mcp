@@ -257,6 +257,55 @@ function color_value(spr, rgba, layer)
   fail("unsupported color mode")
 end
 
+-- color_value for many colours: map(r, g, b, a) gives the same values, with the
+-- palette read once and each colour looked up once.
+function color_mapper(spr, layer)
+  local mode = spr.colorMode
+  if mode == ColorMode.GRAY then
+    local opaque = layer ~= nil and layer.isBackground
+    return function(r, g, b, a)
+      return pc.graya(luma(r, g, b), opaque and 255 or a)
+    end
+  elseif mode ~= ColorMode.INDEXED then
+    return function(r, g, b, a)
+      return color_value(spr, { r, g, b, a }, layer)
+    end
+  end
+  local pal = spr.palettes[1]
+  local tindex = transparent_index(spr, layer)
+  local entries = {}
+  for i = 0, #pal - 1 do
+    if i ~= tindex then
+      local c = pal:getColor(i)
+      table.insert(entries, { i, c.red, c.green, c.blue })
+    end
+  end
+  local memo = {}
+  return function(r, g, b, a)
+    if a == 0 and tindex ~= nil then
+      return tindex
+    end
+    local key = r << 16 | g << 8 | b
+    local found = memo[key]
+    if found == nil then
+      local best_dist = math.huge
+      found = tindex
+      for _, e in ipairs(entries) do
+        local dr, dg, db = e[2] - r, e[3] - g, e[4] - b
+        local dist = dr * dr + dg * dg + db * db
+        if dist < best_dist then
+          found, best_dist = e[1], dist
+          if dist == 0 then
+            break
+          end
+        end
+      end
+      memo[key] = found
+    end
+    return found
+  end
+end
+
 function pixel_rgba(spr, value, layer)
   local mode = spr.colorMode
   if mode == ColorMode.RGB then

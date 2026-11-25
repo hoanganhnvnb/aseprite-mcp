@@ -5,6 +5,7 @@ import sys
 import threading
 import urllib.request
 from pathlib import Path
+from urllib.parse import urlsplit
 
 import pytest
 
@@ -26,7 +27,7 @@ def site(tmp_path: Path) -> Path:
     folder = tmp_path / "site"
     folder.mkdir()
     (folder / "hero.gif").write_bytes(b"GIF89a")
-    (tmp_path / "secret.txt").write_text("private")
+    (tmp_path / "secret.png").write_bytes(b"private")
     return folder
 
 
@@ -35,20 +36,29 @@ def get(url: str) -> bytes:
         return response.read()
 
 
-def raw_status(port: int, target: str) -> int:
+def request(preview: Preview, target: str, host: str | None = None, method: str = "GET"):
+    """Sends target as is (below the token unless it starts with //) and returns the response."""
+    port = preview.address[1]
+    path = target[1:] if target.startswith("//") else urlsplit(preview.url).path + target
     conn = http.client.HTTPConnection("127.0.0.1", port, timeout=1)
     try:
-        conn.request("GET", target)
-        return conn.getresponse().status
+        conn.request(method, path, headers={"Host": host or f"127.0.0.1:{port}"})
+        response = conn.getresponse()
+        response.body = response.read()
+        return response
     finally:
         conn.close()
+
+
+def status(preview: Preview, target: str, host: str | None = None) -> int:
+    return request(preview, target, host).status
 
 
 def test_preview_binds_localhost(preview, site):
     preview.start(site)
 
     assert preview.address[0] == "127.0.0.1"
-    assert preview.url == f"http://127.0.0.1:{preview.address[1]}/"
+    assert preview.url.startswith(f"http://127.0.0.1:{preview.address[1]}/")
 
 
 def test_preview_serves_files(preview, site):
@@ -57,47 +67,123 @@ def test_preview_serves_files(preview, site):
     assert get(url + "hero.gif") == b"GIF89a"
 
 
+def test_preview_url_carries_a_random_token(preview, site):
+    url, _ = preview.start(site)
+    preview.stop()
+    again, _ = preview.start(site)
+
+    token = urlsplit(url).path.strip("/")
+    assert len(token) >= 20
+    assert urlsplit(again).path.strip("/") != token
+
+
 def test_preview_lists_the_folder(preview, site):
     url, _ = preview.start(site)
 
-    assert b"hero.gif" in get(url)
+    assert b'href="hero.gif"' in get(url)
+
+
+def test_preview_accepts_localhost_as_host(preview, site):
+    preview.start(site)
+
+    assert status(preview, "hero.gif", host=f"localhost:{preview.address[1]}") == 200
+
+
+def test_preview_refuses_a_foreign_host(preview, site):
+    preview.start(site)
+
+    assert status(preview, "hero.gif", host="evil.example") == 403
+    assert status(preview, "", host=f"evil.example:{preview.address[1]}") == 403
+
+
+def test_preview_needs_the_token(preview, site):
+    preview.start(site)
+
+    assert status(preview, "//hero.gif") == 404
+    assert status(preview, "//") == 404
+    assert status(preview, "//wrongtoken/hero.gif") == 404
+
+
+def test_preview_redirects_the_bare_token_to_the_listing(preview, site):
+    preview.start(site)
+    token = urlsplit(preview.url).path.rstrip("/")
+
+    response = request(preview, "/" + token)
+
+    assert response.status == 301
+    assert response.getheader("Location") == token + "/"
+
+
+def test_preview_sends_nosniff(preview, site):
+    preview.start(site)
+
+    assert request(preview, "hero.gif").getheader("X-Content-Type-Options") == "nosniff"
+
+
+def test_preview_hides_dotfiles(preview, site):
+    (site / ".env.png").write_bytes(b"x")
+    (site / ".git").mkdir()
+    (site / ".git" / "a.png").write_bytes(b"x")
+    preview.start(site)
+
+    assert status(preview, ".env.png") == 404
+    assert status(preview, ".git/a.png") == 404
+    assert status(preview, "%2egit/a.png") == 404
+    assert b".env" not in request(preview, "").body
+    assert b".git" not in request(preview, "").body
+
+
+def test_preview_serves_only_export_formats(preview, site):
+    (site / "notes.txt").write_text("private")
+    (site / "page.html").write_text("<script></script>")
+    preview.start(site)
+
+    assert status(preview, "notes.txt") == 404
+    assert status(preview, "page.html") == 404
+    assert b"notes.txt" not in request(preview, "").body
+
+
+def test_preview_serves_subfolders(preview, site):
+    (site / "walk").mkdir()
+    (site / "walk" / "w_1.png").write_bytes(b"png")
+    preview.start(site)
+
+    assert request(preview, "walk/w_1.png").body == b"png"
+    assert b'href="walk/"' in request(preview, "").body
 
 
 def test_preview_blocks_parent_paths(preview, site):
     preview.start(site)
-    port = preview.address[1]
 
-    assert raw_status(port, "/../secret.txt") == 404
-    assert raw_status(port, "/%2e%2e/secret.txt") == 404
-    assert raw_status(port, "/" + str(site.parent / "secret.txt")) == 404
+    assert status(preview, "../secret.png") == 404
+    assert status(preview, "%2e%2e/secret.png") == 404
+    assert status(preview, str(site.parent / "secret.png")) == 404
 
 
 @pytest.mark.skipif(not hasattr(os, "symlink"), reason="needs symlinks")
 def test_preview_blocks_symlinks_out_of_the_folder(preview, site):
     try:
-        (site / "leak.txt").symlink_to(site.parent / "secret.txt")
+        (site / "leak.png").symlink_to(site.parent / "secret.png")
     except OSError:
         pytest.skip("cannot create symlinks here")
     preview.start(site)
 
-    assert raw_status(preview.address[1], "/leak.txt") == 404
+    assert status(preview, "leak.png") == 404
+    assert b"leak.png" not in request(preview, "").body
 
 
 def test_preview_refuses_writes(preview, site):
     preview.start(site)
-    conn = http.client.HTTPConnection("127.0.0.1", preview.address[1], timeout=1)
-    try:
-        conn.request("PUT", "/new.txt", body=b"x")
-        assert conn.getresponse().status == 501
-    finally:
-        conn.close()
-    assert not (site / "new.txt").exists()
+
+    assert request(preview, "new.png", method="PUT").status == 501
+    assert not (site / "new.png").exists()
 
 
 def test_preview_writes_nothing_to_stdout(preview, site, capfd):
     url, _ = preview.start(site)
     get(url + "hero.gif")
-    raw_status(preview.address[1], "/missing.png")
+    status(preview, "missing.png")
+    status(preview, "hero.gif", host="evil.example")
 
     assert capfd.readouterr().out == ""
 
