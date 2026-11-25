@@ -369,3 +369,94 @@ async def test_failed_batch_rolls_back_layer_changes(call):
         )
 
     assert await layer_tree(call) == ["Layer 1"]
+
+
+async def test_update_layer_locks_and_unlocks(call, locks, tmp_path: Path):
+    await setup(call, add("Ink"))
+
+    await call("update_layer", path="a.aseprite", layer="Ink", locked=True)
+    assert await locks(tmp_path / "a.aseprite") == ["Ink"]
+
+    await call("update_layer", path="a.aseprite", layer="Ink", locked=False)
+    assert await locks(tmp_path / "a.aseprite") == []
+
+
+async def test_sprite_info_reports_locked_layers(call, locks, tmp_path: Path):
+    await setup(call, add("G", kind="group"), add("A", parent="G"))
+    await locks(tmp_path / "a.aseprite", lock=["G"])
+
+    info = await call("get_sprite_info", path="a.aseprite")
+
+    layer, group = info["layers"]
+    assert (layer["locked"], group["locked"], group["children"][0]["locked"]) == (
+        False,
+        True,
+        False,
+    )
+
+
+async def test_locked_layer_can_be_renamed_and_hidden(call, locks, tmp_path: Path):
+    await call("create_sprite", path="a.aseprite", width=8, height=8)
+    await locks(tmp_path / "a.aseprite", lock=["Layer 1"])
+
+    await call("update_layer", path="a.aseprite", layer="Layer 1", new_name="Ink", visible=False)
+
+    [layer] = (await call("get_sprite_info", path="a.aseprite"))["layers"]
+    assert (layer["name"], layer["visible"], layer["locked"]) == ("Ink", False, True)
+
+
+async def test_delete_layer_refuses_locked_layer(call, locks, tmp_path: Path):
+    await setup(call, add("Ink"))
+    await locks(tmp_path / "a.aseprite", lock=["Ink"])
+
+    with pytest.raises(ToolError, match="'Ink' is locked; unlock it first"):
+        await call("delete_layer", path="a.aseprite", layer="Ink")
+
+    assert await layer_tree(call) == ["Layer 1", "Ink"]
+
+
+async def test_delete_group_refuses_locked_child(call, locks, tmp_path: Path):
+    await setup(call, add("G", kind="group"), add("A", parent="G"))
+    await locks(tmp_path / "a.aseprite", lock=["G/A"])
+
+    with pytest.raises(ToolError, match="'G/A' is locked"):
+        await call("delete_layer", path="a.aseprite", layer="G")
+
+    assert await layer_tree(call) == ["Layer 1", ("G", ["A"])]
+
+
+async def test_delete_layer_refuses_layer_in_locked_group(call, locks, tmp_path: Path):
+    await setup(call, add("G", kind="group"), add("A", parent="G"))
+    await locks(tmp_path / "a.aseprite", lock=["G"])
+
+    with pytest.raises(ToolError, match="'G/A' is inside the locked group 'G'"):
+        await call("delete_layer", path="a.aseprite", layer="G/A")
+
+
+async def test_merge_layer_down_refuses_locked_layer(call, locks, tmp_path: Path):
+    await setup(call, add("Ink"))
+    await locks(tmp_path / "a.aseprite", lock=["Ink"])
+
+    with pytest.raises(ToolError, match="'Ink' is locked"):
+        await call("merge_layer_down", path="a.aseprite", layer="Ink")
+
+    assert await layer_tree(call) == ["Layer 1", "Ink"]
+
+
+async def test_merge_layer_down_refuses_locked_layer_below(call, locks, tmp_path: Path):
+    await setup(call, add("Ink"))
+    await locks(tmp_path / "a.aseprite", lock=["Layer 1"])
+
+    with pytest.raises(ToolError, match="'Layer 1' is locked"):
+        await call("merge_layer_down", path="a.aseprite", layer="Ink")
+
+    assert await layer_tree(call) == ["Layer 1", "Ink"]
+
+
+async def test_flatten_sprite_ignores_locks(call, locks, tmp_path: Path):
+    await setup(call, add("Ink"))
+    await locks(tmp_path / "a.aseprite", lock=["Ink"])
+
+    await call("flatten_sprite", path="a.aseprite")
+
+    assert len(await layer_tree(call)) == 1

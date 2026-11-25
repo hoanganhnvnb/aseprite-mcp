@@ -92,6 +92,23 @@ OPS.copy_frames = function(ctx, p)
     fail(string.format("source frame %d is out of range (sprite has %d frames)", p.source, count))
   end
   local layers = copy_layers(spr, p.layers)
+  -- Refuse before adding frames: a locked layer may only be passed over when the
+  -- copy leaves it as it is (no cel to copy and none to clear).
+  local check = p.append and {} or frame_list(spr, p.targets)
+  for _, layer in ipairs(layers) do
+    local has_source = layer:cel(p.source) ~= nil
+    local changes = has_source and p.append ~= nil
+    for _, n in ipairs(check) do
+      local target = layer:cel(n)
+      if n ~= p.source and (p.mode ~= "missing_only" or target == nil)
+          and (has_source or target ~= nil) then
+        changes = true
+      end
+    end
+    if changes then
+      require_editable(layer)
+    end
+  end
   local appended = {}
   local targets
   if p.append then

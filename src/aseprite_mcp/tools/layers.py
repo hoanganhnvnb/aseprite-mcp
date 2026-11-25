@@ -59,6 +59,9 @@ def update_layer(
     layer: LayerRef,
     new_name: LayerName | None = None,
     visible: bool | None = None,
+    locked: Annotated[
+        bool | None, Field(description="Lock or unlock the layer against pixel and cel edits")
+    ] = None,
     opacity: Annotated[int | None, Field(ge=0, le=255)] = None,
     blend_mode: BlendMode | None = None,
     parent: Annotated[
@@ -70,14 +73,16 @@ def update_layer(
         Field(ge=1, description="Position inside the (new) parent, 1 = bottom"),
     ] = None,
 ) -> dict[str, Any]:
-    """Rename, show/hide, restyle or move a layer; only the given fields change.
+    """Rename, show/hide, lock/unlock, restyle or move a layer; only the given fields change.
 
     The layer is moved first (parent, then stack_index), then its properties are set.
-    Groups have no opacity or blend mode. Returns the layer's new path and stack index.
+    All of this works on locked layers too. Groups have no opacity or blend mode.
+    Returns the layer's new path and stack index.
     """
     changes = {
         "new_name": new_name,
         "visible": visible,
+        "locked": locked,
         "opacity": opacity,
         "blend_mode": blend_mode,
         "parent": parent,
@@ -93,7 +98,8 @@ def update_layer(
 def delete_layer(layer: LayerRef) -> dict[str, Any]:
     """Delete a layer; deleting a group deletes everything in it.
 
-    The sprite must keep at least one layer.
+    The sprite must keep at least one layer. A locked layer, a layer in a locked group
+    and a group holding a locked layer are refused.
     """
     return {"layer": layer}
 
@@ -111,13 +117,16 @@ def duplicate_layer(layer: LayerRef, new_name: LayerName | None = None) -> dict[
 def merge_layer_down(layer: LayerRef) -> dict[str, Any]:
     """Merge a layer into the one below it in the same group, in every frame.
 
-    Both must be image layers (not groups or tilemaps). The layer is merged even when
-    hidden. Returns the path of the merged layer.
+    Both must be image layers (not groups or tilemaps) and neither may be locked. The
+    layer is merged even when hidden. Returns the path of the merged layer.
     """
     return {"layer": layer}
 
 
 @op_tool("flatten_sprite", mutates=True)
 def flatten_sprite() -> dict[str, Any]:
-    """Flatten all visible layers into a single layer; hidden layers are dropped."""
+    """Flatten all visible layers into a single layer; hidden layers are dropped.
+
+    Like every whole-sprite change, it ignores layer locks.
+    """
     return {}

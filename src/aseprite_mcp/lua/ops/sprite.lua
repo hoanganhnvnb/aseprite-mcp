@@ -34,6 +34,7 @@ local function layer_tree(layers, prefix)
       path = path,
       type = layer_type(layer),
       visible = layer.isVisible,
+      locked = not layer.isEditable,
       is_background = layer.isBackground,
       opacity = layer.opacity,
       blend_mode = BLEND_NAMES[layer.blendMode] or "normal",

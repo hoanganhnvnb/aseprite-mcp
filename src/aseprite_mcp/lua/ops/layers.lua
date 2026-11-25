@@ -110,6 +110,9 @@ OPS.update_layer = function(ctx, p)
   if p.visible ~= nil then
     layer.isVisible = p.visible
   end
+  if p.locked ~= nil then
+    layer.isEditable = not p.locked
+  end
   if p.opacity ~= nil then
     layer.opacity = p.opacity
   end
@@ -123,6 +126,14 @@ OPS.delete_layer = function(ctx, p)
   local spr = need_sprite(ctx)
   local layer = get_layer(spr, p.layer)
   local path = layer_path(layer)
+  require_editable(layer)
+  if layer.isGroup then
+    for _, child in ipairs(all_layers(spr)) do
+      if is_inside(spr, child, layer) then
+        require_editable(child)
+      end
+    end
+  end
   if #all_layers(spr) - count_with_children(layer) < 1 then
     fail("cannot delete '" .. path .. "': the sprite needs at least one layer")
   end
@@ -169,6 +180,8 @@ OPS.merge_layer_down = function(ctx, p)
     fail("the layer below '" .. path .. "' is the " .. kind_of(below) .. " '"
       .. layer_path(below) .. "'; only image layers merge")
   end
+  require_editable(layer)
+  require_editable(below)
   app.sprite = spr
   app.layer = layer
   app.command.MergeDownLayer()

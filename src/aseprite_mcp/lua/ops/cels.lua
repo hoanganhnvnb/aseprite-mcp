@@ -11,6 +11,7 @@ local function cel_layer(spr, name)
   if layer.isBackground then
     fail("'" .. path .. "' is the background layer; its cels stay at 0,0 and fully opaque")
   end
+  require_editable(layer)
   return layer, path
 end
 

@@ -25,6 +25,7 @@ async def test_create_and_info(ase_settings: Settings, make_sprite, tmp_path: Pa
         "path": 'a"b\nc',
         "type": "normal",
         "visible": True,
+        "locked": False,
         "is_background": False,
         "opacity": 255,
         "blend_mode": "normal",

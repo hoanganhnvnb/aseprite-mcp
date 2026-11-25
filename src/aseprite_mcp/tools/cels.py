@@ -55,7 +55,7 @@ def set_cel(
     The position is the sprite coordinate of the cel image's top-left corner; an axis
     left out keeps its value. A frame without a cel is an error unless create is true,
     which adds an empty cel at (0, 0) first. Linked cels get their own copy before they
-    move or fade, so frames outside the list never change.
+    move or fade, so frames outside the list never change. The layer must not be locked.
     """
     if x is None and y is None and opacity is None and z_index is None:
         raise ValueError("nothing to change: pass x, y, opacity or z_index")
@@ -76,6 +76,7 @@ def clear_cels(layer: LayerRef, frames: FrameSpec) -> dict[str, Any]:
     """Delete a layer's cels in the given frames; frames without a cel are skipped.
 
     Linked cels in other frames keep their image. Returns how many cels were removed.
+    The layer must not be locked.
     """
     return {"layer": layer, "frames": frames}
 
@@ -137,6 +138,7 @@ def tween_cels(
     zero. Needs at least 2 frames; frame i of n gets t = i/(n-1), or i/n with loop.
     easing: ease_in t², ease_out 1-(1-t)², ease_in_out quadratic in/out,
     ease_out_back overshoots past end then settles, bounce bounces into end.
+    The layer must not be locked.
     """
     _at_least_two(frames, "tween_cels")
     if source_frame is not None and property != "scale":
@@ -176,6 +178,7 @@ def oscillate_cels(
     so the last frame leads back into the first. The base is chosen so the first frame
     keeps its current position: running the tool again with the same arguments gives
     the same result. An axis with amplitude 0 is left as it is. Every frame needs a cel.
+    The layer must not be locked.
     """
     _at_least_two(frames, "oscillate_cels")
     if amplitude_x == 0 and amplitude_y == 0:

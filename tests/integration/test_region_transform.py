@@ -450,19 +450,42 @@ async def test_flip_indexed_keeps_indices(call, pixels, set_palette, tmp_path: P
     assert await pixels(path, read=[(1, 1), (6, 1)], values=True) == [0, 2]
 
 
-async def test_flip_refuses_when_any_layer_is_locked(call, locks, pixels, tmp_path: Path):
+async def test_flip_whole_sprite_ignores_locks(call, locks, pixels, tmp_path: Path):
     path = tmp_path / "a.aseprite"
     await new_sprite(call)
-    await call("add_layer", path="a.aseprite", name="Top")
+    await call("add_layer", path="a.aseprite", name="G", kind="group")
+    await call("update_layer", path="a.aseprite", layer="Layer 1", parent="G")
+    await pixels(path, put=[(1, 0, *RED)], layer="G/Layer 1")
+    await locks(path, lock=["G"])
+
+    await call("flip", path="a.aseprite", axis="horizontal")
+
+    assert await pixels(path, read=[(1, 0), (6, 0)], layer="G/Layer 1") == [CLEAR, RED]
+    assert await locks(path) == ["G"]
+
+
+async def test_flip_one_layer_refuses_locked_layer(call, locks, pixels, tmp_path: Path):
+    path = tmp_path / "a.aseprite"
+    await new_sprite(call)
     await pixels(path, put=[(1, 0, *RED)])
-    await locks(path, lock=["Top"])
+    await locks(path, lock=["Layer 1"])
     before = path.read_bytes()
 
-    with pytest.raises(ToolError, match="'Top' is locked"):
-        await call("flip", path="a.aseprite", axis="horizontal")
+    with pytest.raises(ToolError, match="'Layer 1' is locked"):
+        await call("flip", path="a.aseprite", axis="horizontal", layer="Layer 1")
 
     assert path.read_bytes() == before
-    assert await pixels(path, read=[(1, 0)]) == [RED]
+
+
+async def test_rotate_whole_sprite_ignores_locks(call, locks, pixels, tmp_path: Path):
+    path = tmp_path / "a.aseprite"
+    await new_sprite(call)
+    await pixels(path, put=[(0, 0, *RED)])
+    await locks(path, lock=["Layer 1"])
+
+    await call("rotate", path="a.aseprite", angle=180)
+
+    assert await pixels(path, read=[(0, 0), (7, 7)]) == [CLEAR, RED]
 
 
 async def test_flip_whole_sprite_refuses_tilemap_layer(call):

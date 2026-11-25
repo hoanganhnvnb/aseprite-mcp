@@ -479,3 +479,38 @@ async def test_tilemap_layer_on_png_is_refused(call, tmp_path: Path):
                 {"tool": "delete_layer", "args": {"layer": "Layer"}},
             ],
         )
+
+
+async def test_resize_sprite_ignores_locks(call, pixels, locks, tmp_path: Path):
+    path = tmp_path / "a.aseprite"
+    await call("create_sprite", path="a.aseprite", width=4, height=4)
+    await pixels(path, put=[(1, 1, *RED)])
+    await locks(path, lock=["Layer 1"])
+
+    await call("resize_sprite", path="a.aseprite", width=8, height=8)
+
+    assert await pixels(path, read=[(3, 3), (1, 1)]) == [RED, CLEAR]
+
+
+async def test_crop_sprite_ignores_locks(call, pixels, locks, tmp_path: Path):
+    path = tmp_path / "a.aseprite"
+    await call("create_sprite", path="a.aseprite", width=8, height=8)
+    await pixels(path, put=[(5, 3, *RED)])
+    await locks(path, lock=["Layer 1"])
+
+    await call("crop_sprite", path="a.aseprite", rect={"x": 4, "y": 2, "w": 3, "h": 3})
+
+    assert await pixels(path, read=[(1, 1)]) == [RED]
+
+
+async def test_set_color_mode_ignores_locks(call, pixels, locks, tmp_path: Path):
+    path = tmp_path / "a.aseprite"
+    await call("create_sprite", path="a.aseprite", width=4, height=4)
+    await pixels(path, put=[(0, 0, 255, 255, 255, 255)])
+    await locks(path, lock=["Layer 1"])
+
+    await call("set_color_mode", path="a.aseprite", mode="grayscale")
+
+    info = await call("get_sprite_info", path="a.aseprite")
+    assert info["color_mode"] == "grayscale"
+    assert await pixels(path, read=[(0, 0)]) == [[255, 255, 255, 255]]

@@ -144,6 +144,10 @@ numbered sequence. `save_copy` and `export` write flattened copies on purpose.
 - Frame lists are `3`, `"1-4"`, `"1-4,7"` or `"all"`.
 - Rectangles are `{"x": 0, "y": 0, "w": 16, "h": 16}`.
 - Layers inside groups are named by path: `"body/arm"`.
+- A locked layer (or one inside a locked group) refuses pixel and cel edits, deleting
+  and merging; `update_layer` can still rename, hide or unlock it. Whole-sprite
+  changes (resize, crop, colour mode, flatten, flip and rotate without a layer)
+  ignore locks, as in the editor.
 
 ## Tools
 

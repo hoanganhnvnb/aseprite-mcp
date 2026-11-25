@@ -474,3 +474,70 @@ async def test_oscillate_all_frames_of_single_frame_sprite_fails(call):
         await call(
             "oscillate_cels", path="a.aseprite", layer="Layer 1", frames="all", amplitude_x=2
         )
+
+
+async def test_set_cel_refuses_locked_layer(call, locks, tmp_path: Path):
+    path = tmp_path / "a.aseprite"
+    await new_sprite(call)
+    await locks(path, lock=["Layer 1"])
+    before = path.read_bytes()
+
+    with pytest.raises(ToolError, match="'Layer 1' is locked; unlock it first"):
+        await call("set_cel", path="a.aseprite", layer="Layer 1", frames=1, x=3)
+
+    assert path.read_bytes() == before
+
+
+async def test_set_cel_refuses_layer_in_locked_group(call, locks, tmp_path: Path):
+    path = tmp_path / "a.aseprite"
+    await new_sprite(call)
+    await call("add_layer", path="a.aseprite", name="G", kind="group")
+    await call("update_layer", path="a.aseprite", layer="Layer 1", parent="G")
+    await locks(path, lock=["G"])
+
+    with pytest.raises(ToolError, match="'G/Layer 1' is inside the locked group 'G'"):
+        await call("set_cel", path="a.aseprite", layer="Layer 1", frames=1, opacity=10)
+
+
+async def test_clear_cels_refuses_locked_layer(call, pixels, locks, tmp_path: Path):
+    path = tmp_path / "a.aseprite"
+    await new_sprite(call)
+    await pixels(path, put=[(1, 1, *RED)])
+    await locks(path, lock=["Layer 1"])
+
+    with pytest.raises(ToolError, match="'Layer 1' is locked"):
+        await call("clear_cels", path="a.aseprite", layer="Layer 1", frames="all")
+
+    assert await pixels(path, read=[(1, 1)]) == [RED]
+
+
+async def test_tween_cels_refuses_locked_layer(call, pixels, cels, locks, tmp_path: Path):
+    path = tmp_path / "a.aseprite"
+    await fill_frames(call, pixels, path, frames=3)
+    await locks(path, lock=["Layer 1"])
+
+    with pytest.raises(ToolError, match="'Layer 1' is locked"):
+        await call(
+            "tween_cels",
+            path="a.aseprite",
+            layer="Layer 1",
+            frames="all",
+            property="position",
+            start={"x": 0, "y": 0},
+            end={"x": 4, "y": 0},
+        )
+
+    assert xs(await cels(path)) == [0, 0, 0]
+
+
+async def test_oscillate_cels_refuses_locked_layer(call, pixels, cels, locks, tmp_path: Path):
+    path = tmp_path / "a.aseprite"
+    await fill_frames(call, pixels, path, frames=4)
+    await locks(path, lock=["Layer 1"])
+
+    with pytest.raises(ToolError, match="'Layer 1' is locked"):
+        await call(
+            "oscillate_cels", path="a.aseprite", layer="Layer 1", frames="all", amplitude_x=2
+        )
+
+    assert xs(await cels(path)) == [0, 0, 0, 0]

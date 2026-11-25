@@ -86,8 +86,9 @@ def flip(
 
     horizontal mirrors left and right: pixel x goes to width - 1 - x, whatever the
     cel's size and position, and cel content beyond the canvas edge is mirrored along.
-    Without a layer every image layer is flipped, nested ones included; this is refused
-    when any of them is locked or a tilemap. Linked cels are flipped once when all
+    Without a layer every image layer is flipped, nested ones and locked ones included
+    (as in the editor); this is refused when any of them is a tilemap. A named layer
+    must not be locked. Linked cels are flipped once when all
     their frames are in the list and get their own copy otherwise. Slices are not
     moved.
     """
@@ -110,5 +111,6 @@ def rotate(
     (ox + h - 1 - y, oy + x) and 270 maps it to (y - oy, oy + w - 1 - x): an odd w - h
     rounds the half pixel of a 90 turn towards the top-left and 270 undoes 90 exactly.
     A background layer turns by 90/270 only on a square canvas. Slices are not moved.
+    The whole-sprite turn ignores layer locks; a named layer must not be locked.
     """
     return {"angle": angle, "layer": layer, "frames": frames}

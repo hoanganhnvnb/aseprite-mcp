@@ -3,7 +3,8 @@
 -- the canvas edge travels along; nothing is cropped.
 
 -- The named layer, or every image layer when name is nil. Everything is checked
--- before any change so a refused call leaves the sprite as it was.
+-- before any change so a refused call leaves the sprite as it was. Like the editor's
+-- canvas flip and rotate, the whole-sprite form changes locked layers too.
 local function target_layers(spr, name)
   if name ~= nil then
     local layer = image_layer(spr, name)
@@ -16,7 +17,6 @@ local function target_layers(spr, name)
       fail(string.format("'%s' is a tilemap layer and cannot be flipped or rotated; "
         .. "name the layers to change one by one", layer_path(layer)))
     end
-    require_editable(layer)
   end
   return layers
 end

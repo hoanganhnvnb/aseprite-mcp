@@ -85,7 +85,8 @@ def copy_frames(
     z-index, and a target is cleared where the source frame has no cel. missing_only only
     fills targets where the layer has no cel yet. link=true makes the copies linked cels
     that share the source's image. The source frame itself is skipped if listed in
-    targets. Frame durations are not copied.
+    targets. Frame durations are not copied. A locked layer (or one in a locked group)
+    that the copy would change is refused.
     """
     return {
         "source": source,
