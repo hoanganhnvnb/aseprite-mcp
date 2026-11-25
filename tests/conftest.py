@@ -13,6 +13,7 @@ MakeSprite = Callable[..., Awaitable[Path]]
 PIXELS_SCRIPT = Path(__file__).parent / "lua" / "pixels.lua"
 CELS_SCRIPT = Path(__file__).parent / "lua" / "cels.lua"
 LOCKS_SCRIPT = Path(__file__).parent / "lua" / "locks.lua"
+IMAGES_SCRIPT = Path(__file__).parent / "lua" / "images.lua"
 
 
 def pytest_collection_modifyitems(items: list[pytest.Item]) -> None:
@@ -167,5 +168,19 @@ def locks(ase_settings: Settings):
             save_to=path if lock else None,
         )
         return result.data["locked"]
+
+    return run
+
+
+@pytest.fixture
+def images(ase_settings: Settings):
+    """Returns a layer's cel in every frame as bounds plus image bytes (False if none)."""
+
+    async def run(path: Path, layer: str | None = None) -> list:
+        params = {} if layer is None else {"layer": layer}
+        result = await run_script(
+            IMAGES_SCRIPT, params, settings=ase_settings, lock_paths=[path], open_file=path
+        )
+        return result.data["images"]
 
     return run

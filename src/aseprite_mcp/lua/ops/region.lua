@@ -1,15 +1,6 @@
 -- Region ops. Pixels are copied with Image:drawImage and cleared with Image:clear on
 -- rectangles, so a batch only keeps the touched area in the undo history.
 
-local function canvas_rect(spr, r)
-  local area = Rectangle(r.x, r.y, r.w, r.h):intersect(spr.bounds)
-  if area.isEmpty then
-    fail(string.format("rect (%d, %d, %d x %d) is outside the canvas (%d x %d)",
-      r.x, r.y, r.w, r.h, spr.width, spr.height))
-  end
-  return area
-end
-
 -- Clears the part of `area` (canvas coordinates) that lies inside the cel. A
 -- background layer cannot be transparent and gets opaque black instead.
 local function clear_in_cel(spr, layer, cel, area)

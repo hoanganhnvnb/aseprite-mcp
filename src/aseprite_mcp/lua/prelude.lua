@@ -488,6 +488,67 @@ function cels_to_change(spr, layer, frames)
   return out, missing
 end
 
+-- The part of rect {x, y, w, h} that lies on the canvas; fails when nothing does.
+function canvas_rect(spr, r)
+  local area = Rectangle(r.x, r.y, r.w, r.h):intersect(spr.bounds)
+  if area.isEmpty then
+    fail(string.format("rect (%d, %d, %d x %d) is outside the canvas (%d x %d)",
+      r.x, r.y, r.w, r.h, spr.width, spr.height))
+  end
+  return area
+end
+
+-- Native commands such as filters only work on the active cel, inside the selection,
+-- and silently do nothing on hidden layers. This makes (layer, frame) active, selects
+-- `region` (a Rectangle, or nil for the whole cel), shows the layer and its groups,
+-- runs fn(cel), then clears the selection and puts visibility and the active layer
+-- and frame back as they were.
+function with_target(spr, layer, frame, region, fn)
+  local cel = layer:cel(frame)
+  if cel == nil then
+    fail(string.format("'%s' has no cel in frame %d", layer_path(layer), frame))
+  end
+  local hidden, node = {}, layer
+  while node ~= spr do
+    if not node.isVisible then
+      table.insert(hidden, node)
+      node.isVisible = true
+    end
+    node = node.parent
+  end
+  local old_sprite = app.sprite
+  local old_layer, old_frame
+  if old_sprite == spr then
+    old_layer, old_frame = app.layer, app.frame
+  end
+  app.sprite = spr
+  app.layer = layer
+  app.frame = spr.frames[frame]
+  app.range:clear()
+  if region ~= nil then
+    spr.selection:select(region)
+  else
+    spr.selection:deselect()
+  end
+  local ok, err = pcall(fn, cel)
+  spr.selection:deselect()
+  for _, l in ipairs(hidden) do
+    l.isVisible = false
+  end
+  if old_layer ~= nil then
+    pcall(function()
+      app.layer = old_layer
+      app.frame = old_frame
+    end)
+  end
+  if old_sprite ~= nil and old_sprite ~= spr then
+    app.sprite = old_sprite
+  end
+  if not ok then
+    error(err, 0)
+  end
+end
+
 -- A layer that holds plain pixels: groups and tilemaps are refused.
 function image_layer(spr, name)
   local layer = get_layer(spr, name)
