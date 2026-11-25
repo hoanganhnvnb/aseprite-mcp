@@ -28,6 +28,22 @@ BLEND_MODES = {
   divide = BlendMode.DIVIDE,
 }
 
+-- Long integer lists (pixels, runs) arrive as one space-separated string: decoding
+-- them as JSON arrays and copying the result into plain tables costs several times more.
+function int_list(text)
+  local out, n = {}, 0
+  for v in text:gmatch("%-?%d+") do
+    n = n + 1
+    out[n] = tonumber(v)
+  end
+  return out
+end
+
+-- A colour packed by the Python side as r << 24 | g << 16 | b << 8 | a.
+function unpack_rgba(v)
+  return { v >> 24, (v >> 16) & 255, (v >> 8) & 255, v & 255 }
+end
+
 function need_sprite(ctx)
   if ctx.spr == nil then
     fail("no sprite is open")

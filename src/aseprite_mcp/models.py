@@ -2,7 +2,7 @@ from typing import Annotated
 
 from pydantic import AfterValidator, BaseModel, Field
 
-from .colors import parse_color
+from .colors import checked_color
 
 
 class Rect(BaseModel):
@@ -14,14 +14,9 @@ class Rect(BaseModel):
     h: int = Field(ge=1, le=131072)
 
 
-def _check_color(value: str) -> str:
-    parse_color(value)
-    return value
-
-
 Color = Annotated[
     str,
-    AfterValidator(_check_color),
+    AfterValidator(checked_color),
     Field(description="'#RRGGBB', '#RRGGBBAA' or 'transparent'"),
 ]
 

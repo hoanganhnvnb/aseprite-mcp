@@ -7,7 +7,7 @@ from PIL import Image
 from pydantic import Field
 
 from .. import fonts, raster, server
-from ..colors import RGBA, parse_color
+from ..colors import RGBA, color_rgba
 from ..models import Color, Coord
 from ._registry import READ_ONLY, op_tool
 from .draw import Blend, CreateCel, DrawFrame, DrawLayer, runs_op
@@ -203,12 +203,12 @@ def draw_text(
     image = fonts.render_text(
         text,
         pick_font(font, size),
-        parse_color(color),
+        color_rgba(color),
         bold=bold,
         antialias=antialias,
-        outline=parse_color(outline) if outline is not None else None,
+        outline=color_rgba(outline) if outline is not None else None,
         outline_width=outline_width,
-        shadow=parse_color(shadow) if shadow is not None else None,
+        shadow=color_rgba(shadow) if shadow is not None else None,
         shadow_dx=shadow_dx,
         shadow_dy=shadow_dy,
         letter_spacing=letter_spacing,

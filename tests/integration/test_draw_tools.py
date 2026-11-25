@@ -63,6 +63,44 @@ async def test_draw_pixels_ignores_pixels_outside_canvas_and_counts_them(
     assert await pixels(tmp_path / "a.aseprite", read=[(2, 2)]) == [RED]
 
 
+async def test_draw_pixels_keeps_every_channel(call, pixels, tmp_path: Path):
+    await new_sprite(call)
+
+    await call(
+        "draw_pixels", path="a.aseprite", pixels=[px(0, 0, "#fedcba98"), px(7, 7, "#01020304")]
+    )
+
+    assert await pixels(tmp_path / "a.aseprite", read=[(0, 0), (7, 7)]) == [
+        [254, 220, 186, 152],
+        [1, 2, 3, 4],
+    ]
+
+
+async def test_draw_pixels_negative_coordinates_stay_off_canvas(call, pixels, tmp_path: Path):
+    await new_sprite(call)
+
+    result = await call(
+        "draw_pixels",
+        path="a.aseprite",
+        pixels=[px(-3, 1, "#ff0000"), px(1, -2, "#ff0000"), px(-5, -5, "#ff0000")],
+    )
+
+    assert (result["painted"], result["skipped_outside"]) == (0, 3)
+    assert await pixels(tmp_path / "a.aseprite", read=[(3, 1), (1, 2), (5, 5)]) == [CLEAR] * 3
+
+
+async def test_draw_pixels_on_indexed_sprite_with_alpha(call, pixels, set_palette, tmp_path: Path):
+    path = tmp_path / "a.aseprite"
+    await new_sprite(call, color_mode="indexed")
+    await set_palette(path, [(0, 0, 0, 0), (255, 0, 0, 255), (0, 0, 255, 255)])
+
+    await call(
+        "draw_pixels", path="a.aseprite", pixels=[px(0, 0, "#0000ff"), px(1, 0, "#ff000000")]
+    )
+
+    assert await pixels(path, read=[(0, 0), (1, 0)], values=True) == [2, 0]
+
+
 async def test_draw_pixels_on_indexed_sprite(call, pixels, set_palette, tmp_path: Path):
     path = tmp_path / "a.aseprite"
     await new_sprite(call, color_mode="indexed")

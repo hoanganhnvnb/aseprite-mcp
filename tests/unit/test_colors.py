@@ -5,6 +5,8 @@ import pytest
 from aseprite_mcp.colors import (
     PALETTES,
     PaletteName,
+    checked_color,
+    color_rgba,
     generate_ramp,
     hsl_to_rgb,
     parse_color,
@@ -31,6 +33,27 @@ def test_parse_transparent():
 def test_parse_rejects_missing_hash():
     with pytest.raises(ValueError, match="#RRGGBB"):
         parse_color("ff8000")
+
+
+def test_parse_rejects_underscore_in_hex():
+    with pytest.raises(ValueError, match="'#f_8000'"):
+        parse_color("#f_8000")
+
+
+def test_parse_rejects_sign_in_hex():
+    with pytest.raises(ValueError, match="#RRGGBB"):
+        parse_color("#+f8000")
+
+
+def test_checked_color_keeps_text_and_value():
+    color = checked_color("#10203040")
+
+    assert color == "#10203040"
+    assert color.rgba == (16, 32, 48, 64)
+
+
+def test_color_rgba_parses_plain_text():
+    assert color_rgba("#ff8000") == (255, 128, 0, 255)
 
 
 def test_parse_rejects_short_hex():

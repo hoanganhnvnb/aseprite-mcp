@@ -11,7 +11,7 @@ from PIL import Image, UnidentifiedImageError
 from pydantic import Field
 
 from .. import server
-from ..colors import parse_color
+from ..colors import color_rgba
 from ..errors import ToolError
 from ..filenames import safe_stem, unique_stems
 from ..models import Color, Coord
@@ -165,7 +165,7 @@ async def export(
             "tag": tag,
             "layer": layer,
             "scale": scale,
-            "background": None if background is None else list(parse_color(background)),
+            "background": None if background is None else list(color_rgba(background)),
             "max_pixels": MAX_EXPORT_PIXELS,
         }
         result = await run_op(sprite, "export_frames", params, settings=settings, mutates=False)

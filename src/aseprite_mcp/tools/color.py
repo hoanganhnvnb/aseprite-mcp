@@ -4,7 +4,7 @@ from typing import Annotated, Any, Literal
 from pydantic import BaseModel, ConfigDict, Field
 
 from .. import server
-from ..colors import PALETTES, PaletteName, generate_ramp, parse_color
+from ..colors import PALETTES, PaletteName, color_rgba, generate_ramp
 from ..errors import ToolError
 from ..models import Color, Rect
 from ..ranges import FrameSpec
@@ -70,7 +70,7 @@ class ColorMapping(BaseModel):
 
 
 def rgba(color: str) -> list[int]:
-    return list(parse_color(color))
+    return list(color_rgba(color))
 
 
 def region_param(region: Rect | None) -> dict[str, int] | None:
