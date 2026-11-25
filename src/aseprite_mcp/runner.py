@@ -186,12 +186,15 @@ async def _run_locked(
             payload = {**params, "result_path": str(result_path), "lua_dir": str(LUA_DIR)}
             if save_tmp is not None:
                 payload["save_tmp"] = str(save_tmp)
+            if open_file is not None:
+                # Opened from Lua: on the command line, walk_1.png would load
+                # walk_2.png and the rest of the numbered sequence as frames.
+                payload["open_file"] = str(open_file)
             params_path.write_text(json.dumps(payload), encoding="utf-8")
 
             argv = [
                 settings.aseprite,
                 "--batch",
-                *([str(open_file)] if open_file else []),
                 "--script-param",
                 f"params={params_path}",
                 "--script",

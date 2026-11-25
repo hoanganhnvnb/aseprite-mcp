@@ -35,6 +35,17 @@ function need_sprite(ctx)
   return ctx.spr
 end
 
+-- OpenFile with sequence="no": opening walk_1.png must not pull walk_2.png, ... in as
+-- extra frames, which both argv and app.open do.
+function open_sprite(path)
+  local before = #app.sprites
+  app.command.OpenFile { filename = path, sequence = "no" }
+  if #app.sprites == before then
+    fail("Aseprite could not open " .. app.fs.fileName(path))
+  end
+  return app.sprite
+end
+
 function all_layers(spr)
   local out = {}
   local function walk(layers)

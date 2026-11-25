@@ -351,3 +351,49 @@ async def test_tool_error_sets_is_error_flag(tmp_path: Path, monkeypatch: pytest
 
     assert result.isError is True
     assert "File not found" in result.content[0].text
+
+
+async def numbered_pngs(call) -> None:
+    for i, color in enumerate(["#ff0000", "#00ff00", "#0000ff"], 1):
+        await call("create_sprite", path=f"walk_{i}.png", width=4, height=4, background=color)
+
+
+async def test_numbered_png_opens_as_one_frame(call, tmp_path: Path):
+    await numbered_pngs(call)
+
+    info = await call("get_sprite_info", path="walk_1.png")
+
+    assert len(info["frames"]) == 1
+
+
+async def test_drawing_on_numbered_png_leaves_siblings_alone(call, pixels, tmp_path: Path):
+    await numbered_pngs(call)
+    sibling = (tmp_path / "walk_2.png").read_bytes()
+
+    await call("draw_pixels", path="walk_1.png", pixels=[{"x": 0, "y": 0, "color": "#ffffff"}])
+
+    assert await pixels(tmp_path / "walk_1.png", read=[(0, 0)]) == [[255, 255, 255, 255]]
+    assert (tmp_path / "walk_2.png").read_bytes() == sibling
+
+
+async def test_read_pixels_past_the_only_frame_of_a_numbered_png(call, tmp_path: Path):
+    await numbered_pngs(call)
+
+    with pytest.raises(ToolError, match="out of range"):
+        await call("read_pixels", path="walk_1.png", frame=2, rect={"x": 0, "y": 0, "w": 1, "h": 1})
+
+
+async def test_gif_keeps_all_its_frames(call, tmp_path: Path):
+    await call("create_sprite", path="anim.gif", width=4, height=4, background="#ff0000")
+    await call("add_frames", path="anim.gif", count=2)
+
+    info = await call("get_sprite_info", path="anim.gif")
+
+    assert len(info["frames"]) == 3
+
+
+async def test_opening_a_file_that_is_not_a_sprite(call, tmp_path: Path):
+    (tmp_path / "notes.png").write_bytes(b"not an image at all")
+
+    with pytest.raises(ToolError, match=r"Aseprite could not open notes\.png$"):
+        await call("get_sprite_info", path="notes.png")

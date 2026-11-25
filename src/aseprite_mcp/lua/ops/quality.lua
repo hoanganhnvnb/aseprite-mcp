@@ -705,10 +705,7 @@ end
 
 OPS.copy_layers = function(ctx, p)
   local spr = need_sprite(ctx)
-  local src = app.open(p.source)
-  if src == nil then
-    fail("Aseprite could not open " .. p.source)
-  end
+  local src = open_sprite(p.source)
   local ok, res = pcall(copy_from, spr, src, p)
   src:close()
   app.sprite = spr

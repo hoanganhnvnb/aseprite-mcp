@@ -1,4 +1,4 @@
--- Entry point: aseprite --batch [file] --script-param params=<json file> --script main.lua
+-- Entry point: aseprite --batch --script-param params=<json file> --script main.lua
 -- Every value arrives through the params JSON file; nothing is spliced into Lua source.
 
 local P
@@ -149,8 +149,8 @@ local function main()
   local spr
   if P.create then
     spr = create_sprite(P.create)
-  else
-    spr = app.sprite
+  elseif P.open_file then
+    spr = open_sprite(P.open_file)
   end
   local ctx = { spr = spr, params = P }
   local ops = P.ops or {}

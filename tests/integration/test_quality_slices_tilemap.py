@@ -803,3 +803,15 @@ async def test_copy_layers_runs_in_batch(call):
     )
 
     assert result["result"][0]["layers"] == ["Ink"]
+
+
+async def test_copy_layers_from_numbered_png_takes_one_frame(call, tmp_path: Path):
+    for i in (1, 2):
+        await call("create_sprite", path=f"src_{i}.png", width=8, height=8, background="#ff0000")
+    await setup(call, name="dst.aseprite")
+
+    result = await call("copy_layers", source="src_1.png", target="dst.aseprite", layers=["Layer"])
+
+    assert result["frames_added"] == 0
+    info = await call("get_sprite_info", path="dst.aseprite")
+    assert len(info["frames"]) == 1

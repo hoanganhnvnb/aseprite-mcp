@@ -11,7 +11,7 @@ local P = json.decode(fh:read("a"))
 fh:close()
 dofile(P.lua_dir .. "/prelude.lua")
 
-local spr = app.sprite
+local spr = open_sprite(P.open_file)
 local layer = spr.layers[1]
 if P.layer then
   layer = find_layer(spr, P.layer)

@@ -6,7 +6,7 @@ local P = json.decode(fh:read("a"))
 fh:close()
 dofile(P.lua_dir .. "/prelude.lua")
 
-local spr = app.sprite
+local spr = open_sprite(P.open_file)
 local lock = P.lock or {}
 for i = 1, #lock do
   local layer = assert(find_layer(spr, lock[i]), "no layer " .. lock[i])
