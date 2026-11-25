@@ -8,6 +8,7 @@ from aseprite_mcp.ops import Op, run_op, run_ops
 from aseprite_mcp.runner import run_script
 
 PRELUDE_SPEC = Path(__file__).parent.parent / "lua" / "prelude_spec.lua"
+EASING_SPEC = Path(__file__).parent.parent / "lua" / "easing_spec.lua"
 
 
 async def test_create_and_info(ase_settings: Settings, make_sprite, tmp_path: Path):
@@ -139,3 +140,9 @@ async def test_prelude_spec(ase_settings: Settings):
     result = await run_script(PRELUDE_SPEC, {}, settings=ase_settings)
 
     assert result.data["checks"] > 10
+
+
+async def test_easing_spec(ase_settings: Settings):
+    result = await run_script(EASING_SPEC, {}, settings=ase_settings)
+
+    assert result.data["checks"] > 20

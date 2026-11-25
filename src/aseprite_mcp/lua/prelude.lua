@@ -96,6 +96,36 @@ function find_layer(spr, name)
   return match_path(spr.layers, name)
 end
 
+function get_layer(spr, name)
+  local layer = find_layer(spr, name)
+  if layer == nil then
+    fail("layer '" .. name .. "' not found")
+  end
+  return layer
+end
+
+function is_inside(spr, layer, group)
+  local parent = layer.parent
+  while parent ~= spr do
+    if parent == group then
+      return true
+    end
+    parent = parent.parent
+  end
+  return false
+end
+
+-- Every layer that can hold cels: all non-group layers, nested ones included.
+function cel_layers(spr)
+  local out = {}
+  for _, layer in ipairs(all_layers(spr)) do
+    if not layer.isGroup then
+      table.insert(out, layer)
+    end
+  end
+  return out
+end
+
 function layer_path(layer)
   local parts = { layer.name }
   local root = layer.sprite
@@ -326,3 +356,89 @@ function ensure_cel_bounds(spr, layer, frame, rect)
   cel.position = Point(want.x, want.y)
   return cel
 end
+
+function cel_props(cel)
+  return { opacity = cel.opacity, z_index = cel.zIndex, color = cel.color, data = cel.data }
+end
+
+-- Puts a new cel with `image` at (layer, frame), with the opacity, z-index, colour and
+-- user data in `props` (from cel_props) when given. The old cel is deleted rather than
+-- overwritten: writing into a linked cel would change every frame it is linked to.
+function put_cel(spr, layer, frame, image, position, props)
+  local old = layer:cel(frame)
+  if old ~= nil then
+    spr:deleteCel(old)
+  end
+  local cel = spr:newCel(layer, frame, image, position)
+  if props ~= nil then
+    cel.opacity = props.opacity
+    cel.zIndex = props.z_index
+    cel.color = props.color
+    cel.data = props.data
+  end
+  return cel
+end
+
+-- Makes the cel at `to` an independent copy of the one at `from`, or removes it when
+-- `from` has no cel.
+function copy_cel(spr, layer, from, to)
+  local src = layer:cel(from)
+  if src == nil then
+    local old = layer:cel(to)
+    if old ~= nil then
+      spr:deleteCel(old)
+      return "cleared"
+    end
+    return nil
+  end
+  put_cel(spr, layer, to, src.image:clone(), src.position, cel_props(src))
+  return "copied"
+end
+
+function round_half_away(v)
+  if v >= 0 then
+    return math.floor(v + 0.5)
+  end
+  return -math.floor(-v + 0.5)
+end
+
+-- Easing curves map t in [0, 1] to progress; all start at 0 and end at 1.
+local BACK = 1.70158
+
+local function bounce_out(t)
+  local n, d = 7.5625, 2.75
+  if t < 1 / d then
+    return n * t * t
+  elseif t < 2 / d then
+    t = t - 1.5 / d
+    return n * t * t + 0.75
+  elseif t < 2.5 / d then
+    t = t - 2.25 / d
+    return n * t * t + 0.9375
+  end
+  t = t - 2.625 / d
+  return n * t * t + 0.984375
+end
+
+EASINGS = {
+  linear = function(t)
+    return t
+  end,
+  ease_in = function(t)
+    return t * t
+  end,
+  ease_out = function(t)
+    return 1 - (1 - t) * (1 - t)
+  end,
+  ease_in_out = function(t)
+    if t < 0.5 then
+      return 2 * t * t
+    end
+    return 1 - 2 * (1 - t) * (1 - t)
+  end,
+  ease_out_back = function(t)
+    local u = t - 1
+    return 1 + (BACK + 1) * u * u * u + BACK * u * u
+  end,
+  bounce = bounce_out,
+}

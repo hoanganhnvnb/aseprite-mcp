@@ -1,11 +1,3 @@
-local function get_layer(spr, name)
-  local layer = find_layer(spr, name)
-  if layer == nil then
-    fail("layer '" .. name .. "' not found")
-  end
-  return layer
-end
-
 -- "" is the sprite itself (top level); anything else must name a group.
 local function get_parent(spr, name)
   if name == "" then
@@ -23,17 +15,6 @@ end
 
 local function parent_label(spr, parent)
   return parent == spr and "the top level" or ("'" .. layer_path(parent) .. "'")
-end
-
-local function is_inside(spr, layer, group)
-  local parent = layer.parent
-  while parent ~= spr do
-    if parent == group then
-      return true
-    end
-    parent = parent.parent
-  end
-  return false
 end
 
 local function count_with_children(layer)

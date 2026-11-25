@@ -130,3 +130,46 @@ async def test_frame_spec_schema_accepts_string_or_integer():
 def test_frame_tools_are_batchable():
     assert BATCHABLE["copy_frames"][:2] == ("copy_frames", True)
     assert BATCHABLE["set_tag"][:2] == ("set_tag", True)
+
+
+def test_cel_tools_are_batchable_mutations():
+    for name in ("set_cel", "clear_cels", "tween_cels", "oscillate_cels"):
+        assert BATCHABLE[name][:2] == (name, True)
+
+
+async def test_set_cel_schema():
+    schema = await _schema("set_cel")
+
+    assert schema["required"] == ["path", "layer", "frames"]
+    opacity = schema["properties"]["opacity"]["anyOf"][0]
+    assert (opacity["minimum"], opacity["maximum"]) == (0, 255)
+    assert schema["properties"]["create"]["default"] is False
+
+
+async def test_clear_cels_schema():
+    assert (await _schema("clear_cels"))["required"] == ["path", "layer", "frames"]
+
+
+async def test_tween_cels_schema():
+    schema = await _schema("tween_cels")
+
+    assert schema["required"] == ["path", "layer", "frames", "property", "start", "end"]
+    assert schema["properties"]["property"]["enum"] == ["position", "opacity", "scale"]
+    assert schema["properties"]["easing"]["enum"] == [
+        "linear",
+        "ease_in",
+        "ease_out",
+        "ease_in_out",
+        "ease_out_back",
+        "bounce",
+    ]
+    assert schema["properties"]["anchor"]["default"] == "center"
+    assert "XY" in schema["$defs"]
+
+
+async def test_oscillate_cels_schema():
+    schema = await _schema("oscillate_cels")
+
+    assert schema["required"] == ["path", "layer", "frames"]
+    cycles = schema["properties"]["cycles"]
+    assert (cycles["minimum"], cycles["maximum"], cycles["default"]) == (0.1, 64, 1.0)

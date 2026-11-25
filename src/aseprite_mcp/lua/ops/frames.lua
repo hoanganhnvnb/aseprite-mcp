@@ -5,40 +5,6 @@ local DIRECTIONS = {
   pingpong_reverse = AniDir.PING_PONG_REVERSE,
 }
 
-local function cel_layers(spr)
-  local out = {}
-  for _, layer in ipairs(all_layers(spr)) do
-    if not layer.isGroup then
-      table.insert(out, layer)
-    end
-  end
-  return out
-end
-
--- Makes the cel at `to` an independent copy of the one at `from`, or removes it when
--- `from` has no cel. The old target cel is deleted rather than overwritten: assigning
--- to a linked cel would change every frame it is linked to.
-local function copy_cel(spr, layer, from, to)
-  local old = layer:cel(to)
-  local src = layer:cel(from)
-  if src == nil then
-    if old ~= nil then
-      spr:deleteCel(old)
-      return "cleared"
-    end
-    return nil
-  end
-  if old ~= nil then
-    spr:deleteCel(old)
-  end
-  local cel = spr:newCel(layer, to, src.image:clone(), src.position)
-  cel.opacity = src.opacity
-  cel.zIndex = src.zIndex
-  cel.color = src.color
-  cel.data = src.data
-  return "copied"
-end
-
 local function set_duration(spr, frames, ms)
   for _, n in ipairs(frames) do
     spr.frames[n].duration = ms / 1000
@@ -93,17 +59,6 @@ OPS.set_frame_duration = function(ctx, p)
   return { frames = frames, duration_ms = p.duration_ms }
 end
 
-local function in_group(spr, layer, group)
-  local parent = layer.parent
-  while parent ~= spr do
-    if parent == group then
-      return true
-    end
-    parent = parent.parent
-  end
-  return false
-end
-
 local function copy_layers(spr, names)
   if names == nil then
     return cel_layers(spr)
@@ -116,13 +71,10 @@ local function copy_layers(spr, names)
     end
   end
   for _, name in ipairs(names) do
-    local layer = find_layer(spr, name)
-    if layer == nil then
-      fail("layer '" .. name .. "' not found")
-    end
+    local layer = get_layer(spr, name)
     if layer.isGroup then
       for _, child in ipairs(all_layers(spr)) do
-        if not child.isGroup and in_group(spr, child, layer) then
+        if not child.isGroup and is_inside(spr, child, layer) then
           add(child)
         end
       end

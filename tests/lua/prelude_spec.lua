@@ -129,6 +129,30 @@ local function run()
   check("empty name", find_layer(tree, "") == tree.layers[1])
   check("all layers", #all_layers(tree) == 6)
   check("all layers depth first", all_layers(tree)[3] == inner and all_layers(tree)[4] == deep)
+  check("get_layer finds nested", get_layer(tree, "outer/inner/body") == deep)
+  local _, missing_err = pcall(get_layer, tree, "nope")
+  check("get_layer names missing layer", missing_err.user == "layer 'nope' not found")
+  check("inside nested group", is_inside(tree, deep, outer) and is_inside(tree, deep, inner))
+  check("not inside sibling", not is_inside(tree, slashed, inner))
+  check("cel layers skip groups", #cel_layers(tree) == 4)
+
+  local anim = Sprite(4, 4)
+  anim:newEmptyFrame()
+  local body = anim.layers[1]
+  local first = body:cel(1)
+  first.position = Point(1, 2)
+  first.opacity = 77
+  first.zIndex = 2
+  check("copy_cel copies", copy_cel(anim, body, 1, 2) == "copied")
+  local second = body:cel(2)
+  check("copy keeps cel props", second.position == Point(1, 2) and second.opacity == 77
+    and second.zIndex == 2)
+  check("copy is independent", second.image ~= first.image)
+  anim:newEmptyFrame()
+  check("copy_cel clears target", copy_cel(anim, body, 3, 1) == "cleared" and body:cel(1) == nil)
+  local put = put_cel(anim, body, 3, Image(2, 2), Point(-1, 0), cel_props(second))
+  check("put_cel applies props", put.opacity == 77 and put.zIndex == 2
+    and put.position == Point(-1, 0))
 
   tree:newFrame()
   tree:newFrame()
