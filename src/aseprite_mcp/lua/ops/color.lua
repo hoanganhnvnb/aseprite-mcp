@@ -69,8 +69,18 @@ local function highest_index(spr)
   return top
 end
 
+-- Aseprite keeps a grayscale sprite's palette at the 256 grays: a smaller one is
+-- padded back when the file is saved and loaded again.
+local function refuse_gray(spr, what)
+  if spr.colorMode == ColorMode.GRAY then
+    fail("cannot " .. what .. " of a grayscale sprite: its palette is always the 256 "
+      .. "grays; convert it to rgb or indexed with set_color_mode first")
+  end
+end
+
 OPS.set_palette = function(ctx, p)
   local spr = need_sprite(ctx)
+  refuse_gray(spr, "set its palette")
   local colors = p.colors or {}
   local n = #colors
   if n < 1 or n > 256 then
@@ -127,15 +137,15 @@ local function replacer(spr, layer, mappings, tolerance)
   end
 end
 
--- Runs lookup over the cel inside area (canvas coordinates; nil for the whole cel) and
--- writes the pixels it maps back into the cel. Returns how many pixels matched.
-local function remap_cel(spr, cel, area, lookup)
+-- Runs lookup over the cel inside area (canvas coordinates; nil for the whole cel).
+-- Returns the remapped copy of that part, its canvas box and how many pixels matched.
+local function remap_patch(spr, cel, area, lookup)
   local box = cel.bounds
   if area ~= nil then
     box = box:intersect(area)
   end
   if box.isEmpty then
-    return 0
+    return nil, box, 0
   end
   local pos = cel.position
   local patch = new_image(spr, box.width, box.height)
@@ -148,10 +158,60 @@ local function remap_cel(spr, cel, area, lookup)
       count = count + 1
     end
   end
-  if count > 0 then
-    cel.image:drawImage(patch, Point(box.x - pos.x, box.y - pos.y), 255, BlendMode.SRC)
+  return patch, box, count
+end
+
+local function put_patch(cel, patch, box)
+  local pos = cel.position
+  cel.image:drawImage(patch, Point(box.x - pos.x, box.y - pos.y), 255, BlendMode.SRC)
+end
+
+-- Remaps the cels of layer in frames, each image once. A cel linked to frames outside
+-- the list gets its own copy per listed frame, but only when some pixel changes, so a
+-- call that matches nothing leaves the links alone. Returns cels, matched pixels and
+-- frames without a cel.
+local function remap_frames(spr, layer, frames, area, lookup)
+  local users = image_users(layer)
+  local groups, missing = {}, 0
+  local by_id = {}
+  for _, n in ipairs(frames) do
+    local cel = layer:cel(n)
+    if cel == nil then
+      missing = missing + 1
+    else
+      local id = cel.image.id
+      local group = by_id[id]
+      if group == nil then
+        group = { cel = cel, frames = {}, shared = false }
+        by_id[id] = group
+        table.insert(groups, group)
+      end
+      table.insert(group.frames, n)
+    end
   end
-  return count
+  for id, group in pairs(by_id) do
+    group.shared = #group.frames == users[id]
+  end
+  local cels, matched = 0, 0
+  for _, group in ipairs(groups) do
+    local patch, box, count = remap_patch(spr, group.cel, area, lookup)
+    if group.shared then
+      cels = cels + 1
+      if count > 0 then
+        put_patch(group.cel, patch, box)
+        matched = matched + count
+      end
+    else
+      cels = cels + #group.frames
+      if count > 0 then
+        for _, n in ipairs(group.frames) do
+          put_patch(own_cel(spr, layer, layer:cel(n), users), patch, box)
+          matched = matched + count
+        end
+      end
+    end
+  end
+  return cels, matched, missing
 end
 
 OPS.replace_colors = function(ctx, p)
@@ -168,12 +228,8 @@ OPS.replace_colors = function(ctx, p)
   local area = region_area(spr, p.region)
   local frames = frame_list(spr, p.frames)
   local lookup = replacer(spr, layer, p.mappings, tolerance)
-  local cels, skipped = cels_to_change(spr, layer, frames)
-  local replaced = 0
-  for _, cel in ipairs(cels) do
-    replaced = replaced + remap_cel(spr, cel, area, lookup)
-  end
-  return { layer = path, cels = #cels, replaced = replaced, skipped_frames = skipped }
+  local cels, replaced, skipped = remap_frames(spr, layer, frames, area, lookup)
+  return { layer = path, cels = cels, replaced = replaced, skipped_frames = skipped }
 end
 
 OPS.quantize_to_palette = function(ctx, p)
@@ -183,6 +239,7 @@ OPS.quantize_to_palette = function(ctx, p)
   if spr.colorMode == ColorMode.INDEXED then
     fail("the sprite is indexed, so its pixels are palette entries already")
   end
+  refuse_gray(spr, "quantize a layer")
   local pal = spr.palettes[1]
   local entries = {}
   for i = 0, #pal - 1 do
@@ -220,12 +277,8 @@ OPS.quantize_to_palette = function(ctx, p)
     memo[value] = out
     return out
   end
-  local cels, skipped = cels_to_change(spr, layer, frames)
-  local changed = 0
-  for _, cel in ipairs(cels) do
-    changed = changed + remap_cel(spr, cel, nil, lookup)
-  end
-  return { layer = path, cels = #cels, changed = changed, skipped_frames = skipped }
+  local cels, changed, skipped = remap_frames(spr, layer, frames, nil, lookup)
+  return { layer = path, cels = cels, changed = changed, skipped_frames = skipped }
 end
 
 OPS.extract_palette = function(ctx, p)
@@ -273,7 +326,7 @@ local function native_targets(spr, p)
   local frames = frame_list(spr, p.frames)
   for _, n in ipairs(frames) do
     if layer:cel(n) == nil then
-      fail(string.format("'%s' has no cel in frame %d", path, n))
+      fail(missing_cel_message(layer, n))
     end
   end
   local targets = {}

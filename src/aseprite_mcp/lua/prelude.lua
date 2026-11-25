@@ -498,6 +498,13 @@ function canvas_rect(spr, r)
   return area
 end
 
+-- Filters delete a cel they leave fully transparent, so in a batch a cel can be gone
+-- because of an earlier op.
+function missing_cel_message(layer, frame)
+  return string.format("'%s' has no cel in frame %d (if an earlier op in this call "
+    .. "emptied it, the filter removed it)", layer_path(layer), frame)
+end
+
 -- Native commands such as filters only work on the active cel, inside the selection,
 -- and silently do nothing on hidden layers. This makes (layer, frame) active, selects
 -- `region` (a Rectangle, or nil for the whole cel), shows the layer and its groups,
@@ -506,7 +513,7 @@ end
 function with_target(spr, layer, frame, region, fn)
   local cel = layer:cel(frame)
   if cel == nil then
-    fail(string.format("'%s' has no cel in frame %d", layer_path(layer), frame))
+    fail(missing_cel_message(layer, frame))
   end
   local hidden, node = {}, layer
   while node ~= spr do

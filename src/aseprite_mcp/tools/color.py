@@ -108,10 +108,11 @@ def set_palette(
 ) -> dict[str, Any]:
     """Replace the palette with the given colours or a preset; pass exactly one of them.
 
-    Colours may carry alpha and may be 'transparent'. RGB and grayscale pixels do not
-    change. Indexed pixels keep their indices, so each shows the new colour at its
-    entry; the palette must stay large enough for every index in use, and the
-    transparent index stays the same.
+    Colours may carry alpha and may be 'transparent'. RGB pixels do not change.
+    Indexed pixels keep their indices, so each shows the new colour at its entry; the
+    palette must stay large enough for every index in use, and the transparent index
+    stays the same. Grayscale sprites are refused: Aseprite always gives them the 256
+    grays, so convert to rgb or indexed with set_color_mode first.
     """
     if (colors is None) == (preset is None):
         raise ValueError("pass exactly one of colors and preset")
@@ -167,9 +168,12 @@ def replace_colors(
     first matching mapping wins. to='transparent' erases, except on a background layer,
     which ignores alpha and gets opaque black. On indexed sprites pixels are matched by
     their palette colour and get the palette entry nearest to `to` (exactly `to` when
-    the palette has it); the palette is not changed. Frames without a cel are skipped.
-    Linked cels change once; one also linked to frames outside the list gets its own
-    copy. replaced counts the pixels that matched.
+    the palette has it); the palette is not changed. On grayscale sprites pixels compare
+    as (v, v, v), so a coloured `from` only matches within tolerance, and `to` is
+    stored as its gray value.
+    Frames without a cel are skipped. Linked cels change once; one also linked to
+    frames outside the list gets its own copy, only when some of its pixels change.
+    replaced counts the pixels that matched.
     """
     return {
         "layer": layer,
@@ -197,8 +201,10 @@ def adjust_colors(
     They run in this order: hue/saturation/lightness (HSL, as percentages), then
     brightness/contrast, then invert.
 
-    Every requested frame must have a cel. Linked cels change once; one also linked to
-    frames outside the list gets its own copy. Indexed sprites only support invert
+    Every requested frame must have a cel. A filter removes a cel it leaves fully
+    transparent, so a later op on that frame in the same batch finds no cel. Linked
+    cels change once; one also linked to frames outside the list always gets its own
+    copy, even when nothing changes. Indexed sprites only support invert
     (each pixel gets the palette entry nearest to its inverted colour): the other
     adjustments would rewrite the shared palette.
     """
@@ -241,7 +247,8 @@ def outline(
 
     Uses Aseprite's Outline filter; the cel grows to make room. With region only
     pixels inside it change. Background layers are refused (nothing is transparent
-    there). Every requested frame must have a cel; linked cels are handled like
+    there). Every requested frame must have a cel; an emptied cel (inside outline
+    with a transparent color) is removed, and linked cels are handled like
     adjust_colors. Indexed sprites use the palette entry nearest to color.
     """
     return {
@@ -265,19 +272,22 @@ def apply_convolution(
 
     Alpha is filtered too, except on a background layer, which stays opaque. Indexed
     pixels are filtered through their palette colours and get the nearest entry. A cel
-    left fully transparent is removed. Every requested frame must have a cel; linked
-    cels are handled like adjust_colors.
+    left fully transparent is removed, so a later op on that frame in the same batch
+    finds no cel. Every requested frame must have a cel; linked cels are handled like
+    adjust_colors.
     """
     return {"layer": layer, "frames": frames, "matrix": matrix, "region": region_param(region)}
 
 
 @op_tool("quantize_to_palette", mutates=True)
 def quantize_to_palette(layer: LayerRef, frames: FrameSpec = 1) -> dict[str, Any]:
-    """Snap every visible pixel of an RGB or grayscale layer to its nearest palette colour.
+    """Snap every visible pixel of a layer of an RGB sprite to its nearest palette colour.
 
     Nearest is by RGB distance among the palette's non-transparent entries; each pixel
-    keeps its alpha. Indexed sprites are refused (their pixels are palette entries).
-    Frames without a cel are skipped. changed counts the pixels that got a new value.
+    keeps its alpha. Indexed sprites (pixels are palette entries already) and grayscale
+    sprites (their palette is always the 256 grays) are refused. Frames without a cel
+    are skipped. Linked cels are handled like replace_colors. changed counts the pixels
+    that got a new value.
     """
     return {"layer": layer, "frames": frames}
 
@@ -291,7 +301,9 @@ def extract_palette(
 ) -> dict[str, Any]:
     """Find up to max_colors colours that best represent the visible sprite.
 
-    Uses Aseprite's colour quantization over all visible layers and frames. The sprite
-    and its palette are not changed: pass the result to set_palette to use it.
+    Uses Aseprite's colour quantization over all visible layers and frames. Its
+    palettes hold a transparent entry, which is left out of the result but takes one
+    of the 256 slots, so max_colors=256 gives at most 255 colours. The
+    sprite and its palette are not changed: pass the result to set_palette to use it.
     """
     return {"max_colors": max_colors, "with_alpha": with_alpha}

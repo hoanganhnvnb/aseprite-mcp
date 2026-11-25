@@ -262,6 +262,26 @@ async def test_replace_colors_on_one_linked_frame_keeps_the_other(call, pixels, 
     assert await pixels(path, read=[(0, 0)], frame=2) == [GREEN]
 
 
+async def test_replace_colors_on_two_of_three_linked_frames(call, pixels, tmp_path: Path):
+    path = tmp_path / "a.aseprite"
+    await new_sprite(call)
+    await call("add_frames", path="a.aseprite", count=2)
+    await pixels(path, put=[(0, 0, *RED)])
+    await call("copy_frames", path="a.aseprite", source=1, targets="2-3", link=True)
+
+    result = await call(
+        "replace_colors",
+        path="a.aseprite",
+        layer="Layer 1",
+        frames="1-2",
+        mappings=[{"from": "#ff0000", "to": "#00ff00"}],
+    )
+
+    assert (result["cels"], result["replaced"]) == (2, 2)
+    for frame, expected in ((1, GREEN), (2, GREEN), (3, RED)):
+        assert await pixels(path, read=[(0, 0)], frame=frame) == [expected]
+
+
 async def test_adjust_invert(call, pixels, tmp_path: Path):
     path = tmp_path / "a.aseprite"
     await new_sprite(call)
@@ -661,3 +681,55 @@ async def test_failing_colour_op_saves_nothing(call, pixels, tmp_path: Path):
         )
 
     assert await pixels(path, read=[(0, 0)]) == [RED]
+
+
+async def test_set_palette_refused_on_grayscale_sprite(call):
+    await new_sprite(call, color_mode="grayscale")
+
+    with pytest.raises(ToolError, match="grayscale"):
+        await call("set_palette", path="a.aseprite", colors=["#000000", "#808080"])
+
+    assert (await call("get_palette", path="a.aseprite"))["size"] == 256
+
+
+async def test_quantize_to_palette_refuses_grayscale_sprite(call):
+    await new_sprite(call, color_mode="grayscale")
+
+    with pytest.raises(ToolError, match="grayscale"):
+        await call("quantize_to_palette", path="a.aseprite", layer="Layer 1")
+
+
+async def test_replace_colors_without_a_match_keeps_cels_linked(call, pixels, cels, tmp_path: Path):
+    path = tmp_path / "a.aseprite"
+    await new_sprite(call)
+    await call("add_frames", path="a.aseprite", count=1)
+    await pixels(path, put=[(0, 0, *RED)])
+    await call("copy_frames", path="a.aseprite", source=1, targets=2, link=True)
+
+    result = await call(
+        "replace_colors",
+        path="a.aseprite",
+        layer="Layer 1",
+        frames=1,
+        mappings=[{"from": "#0000ff", "to": "#00ff00"}],
+    )
+
+    assert result["replaced"] == 0
+    first, second = await cels(path)
+    assert first["image_id"] == second["image_id"]
+
+
+async def test_missing_cel_error_mentions_cels_emptied_earlier(call, pixels, tmp_path: Path):
+    path = tmp_path / "a.aseprite"
+    await new_sprite(call, 5, 5, background="#000000")
+    await pixels(path, put=[(2, 2, *WHITE)])
+
+    with pytest.raises(ToolError, match="emptied"):
+        await call(
+            "batch",
+            path="a.aseprite",
+            ops=[
+                {"tool": "apply_convolution", "args": {"layer": "Layer 1", "matrix": "edges-find"}},
+                {"tool": "adjust_colors", "args": {"layer": "Layer 1", "invert": True}},
+            ],
+        )
