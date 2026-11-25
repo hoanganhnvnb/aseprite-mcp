@@ -51,6 +51,7 @@ local function layer_tree(layers, prefix)
       path = path,
       type = layer_type(layer),
       visible = layer.isVisible,
+      is_background = layer.isBackground,
       opacity = layer.opacity,
       blend_mode = BLEND_NAMES[layer.blendMode] or "normal",
       children = layer.isGroup and layer_tree(layer.layers, path) or {},
@@ -87,7 +88,8 @@ OPS.sprite_info = function(ctx)
   }
 end
 
--- Version probe for the doctor command; "fail" and "crash" exercise both error paths.
+-- Version probe for the doctor command; "fail" and "crash" exercise both error
+-- paths and "echo" comes back as decoded, to check parameter passing.
 OPS._ping = function(_, p)
   if p.fail then
     fail(p.fail)
@@ -96,5 +98,5 @@ OPS._ping = function(_, p)
     local missing = nil
     return missing.field
   end
-  return { api = app.apiVersion, version = tostring(app.version) }
+  return { api = app.apiVersion, version = tostring(app.version), echo = p.echo }
 end

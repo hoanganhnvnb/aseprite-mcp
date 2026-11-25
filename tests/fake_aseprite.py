@@ -40,6 +40,12 @@ def main() -> int:
     if mode == "fail":
         result_path.write_text(json.dumps({"ok": False, "error": "no such layer"}))
         return 0
+    if mode == "numbered":
+        tmp = Path(params["save_tmp"])
+        for n in (1, 2):
+            tmp.with_name(f"{tmp.stem}{n}{tmp.suffix}").write_text("frame")
+        result_path.write_text(json.dumps({"ok": True, "results": [], "saved": True}))
+        return 0
     if mode == "unicode":
         sys.stdout.buffer.write("pixel éè ☃ ".encode() + b"\xff\n")
         result_path.write_text(json.dumps({"ok": True, "results": [], "saved": False}))

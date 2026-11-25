@@ -26,7 +26,12 @@ end
 local function plain(value)
   local kind = type(value)
   if kind == "number" then
-    return math.tointeger(value) or value
+    -- math.tointeger truncates fractions in this Lua build, so check integrality first.
+    if math.type(value) == "float" and value == math.floor(value)
+        and value >= math.mininteger and value <= math.maxinteger then
+      return math.floor(value)
+    end
+    return value
   end
   if kind ~= "userdata" then
     return value
@@ -70,17 +75,35 @@ local function create_sprite(spec)
   if math.type(w) ~= "integer" or math.type(h) ~= "integer" or w < 1 or h < 1 then
     fail("sprite width and height must be positive integers")
   end
+  local frames = spec.frames or 1
+  if math.type(frames) ~= "integer" or frames < 1 then
+    fail("frame count must be a positive integer")
+  end
   local spr = Sprite(ImageSpec { width = w, height = h, colorMode = mode })
-  -- Batch mode starts indexed sprites with 256 black entries; use the editor's
-  -- default palette like a sprite created from the UI.
-  if app.defaultPalette then
-    spr:setPalette(app.defaultPalette)
+  set_default_palette(spr)
+  for _ = 2, frames do
+    spr:newEmptyFrame()
   end
   for i, name in ipairs(spec.layers or {}) do
     local layer = spr.layers[i] or spr:newLayer()
     layer.name = name
   end
   return spr
+end
+
+-- Formats that hold one image; saveCopyAs would write numbered files instead.
+local SINGLE_IMAGE = {
+  png = true, jpg = true, jpeg = true, bmp = true, tga = true,
+  pcx = true, ico = true, webp = true, qoi = true,
+}
+
+local function check_save_format(spr, target)
+  local ext = (target or ""):match("%.([^.\\/]+)$")
+  if ext and SINGLE_IMAGE[ext:lower()] and #spr.frames > 1 then
+    fail(string.format(
+      "a .%s file holds one frame but the sprite has %d; save it as .aseprite or .gif",
+      ext, #spr.frames))
+  end
 end
 
 local function error_text(err)
@@ -161,6 +184,7 @@ local function main()
       mutated = mutated or op.mutates == true
     end
     if mutated then
+      check_save_format(spr, P.target)
       spr:saveCopyAs(P.save_tmp)
       saved = true
     end

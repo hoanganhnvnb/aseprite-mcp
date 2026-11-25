@@ -188,3 +188,14 @@ async def test_timeout_keeps_original(settings: Settings, tmp_path: Path):
         await run_script(SCRIPT, params, settings=replace(settings, timeout=1.0), save_to=target)
     assert target.read_text() == "old"
     assert [p.name for p in tmp_path.iterdir() if p.name.startswith(".")] == []
+
+
+async def test_numbered_save_files_are_removed(settings: Settings, tmp_path: Path):
+    target = tmp_path / "anim.png"
+    target.write_text("old")
+
+    with pytest.raises(AsepriteError, match="missing"):
+        await run_script(SCRIPT, {"fake": "numbered"}, settings=settings, save_to=target)
+
+    assert target.read_text() == "old"
+    assert sorted(p.name for p in tmp_path.iterdir()) == ["anim.png", "bin"]

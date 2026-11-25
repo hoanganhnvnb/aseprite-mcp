@@ -23,6 +23,7 @@ async def test_create_and_info(ase_settings: Settings, make_sprite, tmp_path: Pa
         "path": 'a"b\nc',
         "type": "normal",
         "visible": True,
+        "is_background": False,
         "opacity": 255,
         "blend_mode": "normal",
         "children": [],
@@ -50,6 +51,33 @@ async def test_create_rejects_unknown_color_mode(ase_settings: Settings, tmp_pat
     with pytest.raises(AsepriteError, match="cmyk"):
         await run_ops(path, [], settings=ase_settings, create=create)
     assert not path.exists()
+
+
+async def test_create_rejects_fractional_width(ase_settings: Settings, tmp_path: Path):
+    path = tmp_path / "bad.aseprite"
+    create = {"width": 16.5, "height": 8, "color_mode": "rgb"}
+
+    with pytest.raises(AsepriteError, match="positive integers"):
+        await run_ops(path, [], settings=ase_settings, create=create)
+    assert not path.exists()
+
+
+async def test_multi_frame_sprite_cannot_save_as_png(ase_settings: Settings, tmp_path: Path):
+    path = tmp_path / "anim.png"
+    create = {"width": 8, "height": 8, "color_mode": "rgb", "frames": 2}
+
+    with pytest.raises(AsepriteError, match=r"\.aseprite or \.gif"):
+        await run_ops(path, [], settings=ase_settings, create=create)
+    assert list(tmp_path.iterdir()) == []
+
+
+async def test_params_keep_fractions(ase_settings: Settings):
+    echo = {"f": 1.5, "g": -0.25, "n": 16}
+
+    result = await run_op(None, "_ping", {"echo": echo}, settings=ase_settings, mutates=False)
+
+    assert result["echo"] == {"f": 1.5, "g": -0.25, "n": 16}
+    assert isinstance(result["echo"]["n"], int)
 
 
 async def test_ping_without_sprite(ase_settings: Settings):

@@ -34,6 +34,7 @@ async def run_ops(
         "ops": [{"name": op.name, "params": op.params, "mutates": op.mutates} for op in ops],
         "op_files": op_files(),
         "create": create,
+        "target": str(path) if path is not None else None,
     }
     result = await run_script(
         MAIN_SCRIPT,

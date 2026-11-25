@@ -63,6 +63,19 @@ def _save_tmp_path(save_to: Path) -> Path:
     return save_to.with_name(f".{save_to.stem}.{token}.tmp{save_to.suffix}")
 
 
+def _remove_save_leftovers(save_tmp: Path) -> None:
+    # Saving a multi-frame sprite to a single-image format makes Aseprite write
+    # numbered siblings (.x.token.tmp1.png, ...) next to the requested name.
+    prefix = save_tmp.name.removesuffix(save_tmp.suffix)
+    try:
+        entries = list(os.scandir(save_tmp.parent))
+    except OSError:
+        return
+    for entry in entries:
+        if entry.name.startswith(prefix) and entry.is_file(follow_symlinks=False):
+            Path(entry.path).unlink(missing_ok=True)
+
+
 async def _kill_tree(proc: asyncio.subprocess.Process) -> None:
     if sys.platform == "win32":
         killer = await asyncio.create_subprocess_exec(
@@ -204,4 +217,4 @@ async def _run_locked(
         return RunResult(data, stdout, stderr, time.monotonic() - started)
     finally:
         if save_tmp is not None:
-            save_tmp.unlink(missing_ok=True)
+            _remove_save_leftovers(save_tmp)

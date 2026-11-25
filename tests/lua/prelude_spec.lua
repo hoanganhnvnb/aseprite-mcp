@@ -63,6 +63,28 @@ local function run()
   check("indexed is_transparent", is_transparent(indexed, 0) and not is_transparent(indexed, 1))
   check("indexed clear", clear_value(indexed) == 0)
 
+  local bg = Sprite(2, 2, ColorMode.INDEXED)
+  bg:setPalette(pal)
+  bg.transparentColor = 0
+  app.sprite = bg
+  app.layer = bg.layers[1]
+  app.command.BackgroundFromLayer()
+  local back = bg.layers[1]
+  check("background layer", back.isBackground)
+  check("background index 0 is opaque", select(4, pixel_rgba(bg, 0, back)) == 255)
+  check("background index 0 not transparent", not is_transparent(bg, 0, back))
+  check("background maps to index 0", color_value(bg, { 0, 0, 0, 255 }, back) == 0)
+  check("background ignores alpha", color_value(bg, { 255, 0, 0, 0 }, back) == 1)
+  check("layer arg on normal layer", color_value(indexed, { 0, 0, 0, 0 }, indexed.layers[1]) == 0)
+
+  local fresh_indexed = Sprite(2, 2, ColorMode.INDEXED)
+  set_default_palette(fresh_indexed)
+  local black = color_value(fresh_indexed, { 0, 0, 0, 255 })
+  check("default palette transparent entry", fresh_indexed.transparentColor == 0
+    and fresh_indexed.palettes[1]:getColor(0).alpha == 0)
+  check("default palette keeps black", black ~= 0
+    and same_rgba({ pixel_rgba(fresh_indexed, black) }, { 0, 0, 0, 255 }))
+
   local spr = Sprite(8, 8, ColorMode.RGB)
   local layer = spr.layers[1]
   local red = color_value(spr, { 255, 0, 0, 255 })
@@ -113,7 +135,17 @@ local function run()
   local frames = frame_list(tree, nil)
   check("all frames", #frames == 3 and frames[3] == 3)
   check("listed frames", #frame_list(tree, { 3, 1 }) == 2)
+  local sorted = frame_list(tree, { 3, 1, 3 })
+  check("frames sorted without duplicates", #sorted == 2 and sorted[1] == 1 and sorted[2] == 3)
+  check("single frame number", frame_list(tree, 2)[1] == 2)
   check("frame out of range", not pcall(frame_list, tree, { 4 }))
+  check("frame zero", not pcall(frame_list, tree, 0))
+  check("fractional frame", not pcall(frame_list, tree, { 1.5 }))
+  check("frame string", not pcall(frame_list, tree, "2"))
+  check("empty frame list", not pcall(frame_list, tree, {}))
+  check("frame map", not pcall(frame_list, tree, { a = 1 }))
+  local _, frame_err = pcall(frame_list, tree, "2")
+  check("frame error names value", type(frame_err) == "table" and frame_err.user:find('"2"', 1, true))
   local ok, err = pcall(fail, "nope")
   check("fail raises user error", not ok and type(err) == "table" and err.user == "nope")
 end

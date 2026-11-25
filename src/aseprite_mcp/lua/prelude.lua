@@ -85,7 +85,16 @@ function layer_path(layer)
   return table.concat(parts, "/")
 end
 
--- nil means every frame; otherwise a list of 1-based frame numbers.
+local function is_sequence(t)
+  local n = 0
+  for _ in pairs(t) do
+    n = n + 1
+  end
+  return n > 0 and n == #t
+end
+
+-- nil or "all" means every frame; otherwise one frame number or a non-empty list of
+-- them. The result is sorted with duplicates removed.
 function frame_list(spr, spec)
   local count = #spr.frames
   if spec == nil or spec == "all" then
@@ -97,14 +106,25 @@ function frame_list(spr, spec)
   end
   if type(spec) == "number" then
     spec = { spec }
+  elseif type(spec) ~= "table" or not is_sequence(spec) then
+    local shown = type(spec) == "string" and string.format("%q", spec) or json.encode(spec)
+    fail(string.format("invalid frame list %s: use \"all\", a frame number or a list of them",
+      shown))
   end
-  local out = {}
+  local seen, out = {}, {}
   for _, n in ipairs(spec) do
-    if math.type(n) ~= "integer" or n < 1 or n > count then
-      fail(string.format("frame %s is out of range (sprite has %d frames)", tostring(n), count))
+    if math.type(n) ~= "integer" then
+      fail(string.format("frame %s is not a whole number", tostring(n)))
     end
-    table.insert(out, n)
+    if n < 1 or n > count then
+      fail(string.format("frame %d is out of range (sprite has %d frames)", n, count))
+    end
+    if not seen[n] then
+      seen[n] = true
+      table.insert(out, n)
+    end
   end
+  table.sort(out)
   return out
 end
 
@@ -115,9 +135,8 @@ local function luma(r, g, b)
   return (r * 2126 + g * 7152 + b * 722 + 5000) // 10000
 end
 
-local function nearest_index(spr, r, g, b)
+local function nearest_index(spr, r, g, b, skip)
   local pal = spr.palettes[1]
-  local skip = spr.transparentColor
   local best, best_dist = nil, math.huge
   for i = 0, #pal - 1 do
     if i ~= skip then
@@ -135,7 +154,19 @@ local function nearest_index(spr, r, g, b)
   return best or skip
 end
 
-function color_value(spr, rgba)
+-- The transparent index only means "transparent" on transparent layers; a
+-- background layer shows it as its opaque palette colour.
+local function transparent_index(spr, layer)
+  if layer ~= nil and layer.isBackground then
+    return nil
+  end
+  return spr.transparentColor
+end
+
+-- `layer` is optional; pass it so indexed background layers are handled right.
+-- Background layers cannot be transparent, so alpha is ignored there and every
+-- colour maps to its nearest palette entry.
+function color_value(spr, rgba, layer)
   local r, g, b = rgba[1], rgba[2], rgba[3]
   local a = rgba[4] or 255
   local mode = spr.colorMode
@@ -144,15 +175,19 @@ function color_value(spr, rgba)
   elseif mode == ColorMode.GRAY then
     return pc.graya(luma(r, g, b), a)
   elseif mode == ColorMode.INDEXED then
-    if a == 0 then
-      return spr.transparentColor
+    local tindex = transparent_index(spr, layer)
+    if tindex == nil then
+      return nearest_index(spr, r, g, b, nil)
     end
-    return nearest_index(spr, r, g, b)
+    if a == 0 then
+      return tindex
+    end
+    return nearest_index(spr, r, g, b, tindex)
   end
   fail("unsupported color mode")
 end
 
-function pixel_rgba(spr, value)
+function pixel_rgba(spr, value, layer)
   local mode = spr.colorMode
   if mode == ColorMode.RGB then
     return pc.rgbaR(value), pc.rgbaG(value), pc.rgbaB(value), pc.rgbaA(value)
@@ -161,23 +196,44 @@ function pixel_rgba(spr, value)
     return v, v, v, pc.grayaA(value)
   elseif mode == ColorMode.INDEXED then
     local pal = spr.palettes[1]
-    if value == spr.transparentColor or value < 0 or value >= #pal then
+    if value == transparent_index(spr, layer) or value < 0 or value >= #pal then
       return 0, 0, 0, 0
     end
     local c = pal:getColor(value)
+    if layer ~= nil and layer.isBackground then
+      return c.red, c.green, c.blue, 255
+    end
     return c.red, c.green, c.blue, c.alpha
   end
   fail("unsupported color mode")
 end
 
-function is_transparent(spr, value)
+function is_transparent(spr, value, layer)
   local mode = spr.colorMode
   if mode == ColorMode.RGB then
     return pc.rgbaA(value) == 0
   elseif mode == ColorMode.GRAY then
     return pc.grayaA(value) == 0
   end
-  return value == spr.transparentColor
+  return value == transparent_index(spr, layer)
+end
+
+-- Indexed sprites get a dedicated transparent entry at index 0 so the default
+-- palette's own colours (black included) all stay usable as opaque colours.
+function set_default_palette(spr)
+  local base = app.defaultPalette
+  if spr.colorMode ~= ColorMode.INDEXED then
+    spr:setPalette(base)
+    return
+  end
+  local size = math.min(#base + 1, 256)
+  local pal = Palette(size)
+  pal:setColor(0, Color { r = 0, g = 0, b = 0, a = 0 })
+  for i = 1, size - 1 do
+    pal:setColor(i, base:getColor(i - 1))
+  end
+  spr:setPalette(pal)
+  spr.transparentColor = 0
 end
 
 function clear_value(spr)
