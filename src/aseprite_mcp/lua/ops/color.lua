@@ -7,13 +7,6 @@ local pc = app.pixelColor
 -- Filter channel bits, as the filter commands take them.
 local RGB, ALPHA, GRAY, INDEX = 1 | 2 | 4, 8, 16, 32
 
-local function hex(c)
-  if c.alpha == 255 then
-    return string.format("#%02x%02x%02x", c.red, c.green, c.blue)
-  end
-  return string.format("#%02x%02x%02x%02x", c.red, c.green, c.blue, c.alpha)
-end
-
 local function region_area(spr, region)
   if region == nil then
     return nil
@@ -26,7 +19,7 @@ OPS.get_palette = function(ctx)
   local pal = spr.palettes[1]
   local colors = {}
   for i = 0, #pal - 1 do
-    colors[i + 1] = hex(pal:getColor(i))
+    colors[i + 1] = color_hex(pal:getColor(i))
   end
   local out = { colors = colors, size = #pal }
   if spr.colorMode == ColorMode.INDEXED then
@@ -305,7 +298,7 @@ OPS.extract_palette = function(ctx, p)
     for i = 0, #pal - 1 do
       local c = pal:getColor(i)
       if not (i == 0 and c.alpha == 0) and #colors < max then
-        table.insert(colors, hex(c))
+        table.insert(colors, color_hex(c))
       end
     end
     return colors

@@ -17,13 +17,14 @@ local DATA_FORMATS = {
   array = SpriteSheetDataFormat.JSON_ARRAY,
 }
 
-local function find_tag(spr, name)
+local function need_tag(spr, name)
+  local tag = find_tag(spr, name)
+  if tag ~= nil then
+    return tag
+  end
   local known = {}
-  for _, tag in ipairs(spr.tags) do
-    if tag.name == name then
-      return tag
-    end
-    table.insert(known, "'" .. tag.name .. "'")
+  for _, t in ipairs(spr.tags) do
+    table.insert(known, "'" .. t.name .. "'")
   end
   local hint = #known > 0 and ("; tags: " .. table.concat(known, ", ")) or "; the sprite has no tags"
   fail("tag '" .. name .. "' not found" .. hint)
@@ -35,17 +36,6 @@ local function tag_frames(tag)
     table.insert(out, n)
   end
   return out
-end
-
-local function shown(spr, layer)
-  local node = layer
-  while node ~= spr do
-    if not node.isVisible then
-      return false
-    end
-    node = node.parent
-  end
-  return true
 end
 
 -- Runs fn with only `layer` showing: it and its groups are made visible, layers
@@ -122,7 +112,7 @@ OPS.export_frames = function(ctx, p)
   local spr = need_sprite(ctx)
   local frames
   if p.tag then
-    frames = tag_frames(find_tag(spr, p.tag))
+    frames = tag_frames(need_tag(spr, p.tag))
   else
     frames = frame_list(spr, p.frames)
   end
@@ -170,15 +160,17 @@ OPS.export_sheet = function(ctx, p)
   local spr = need_sprite(ctx)
   local count = #spr.frames
   if p.tag then
-    count = #tag_frames(find_tag(spr, p.tag))
+    count = #tag_frames(need_tag(spr, p.tag))
   end
   local scale = p.scale or 1
   check_size(count, spr.width * scale, spr.height * scale, p.max_pixels, "the sheet")
 
-  local source = spr
+  -- Exported from an unsaved copy: the exporter stores its settings with the document,
+  -- and for a document with a file name they end up as an .ini in the user's
+  -- Aseprite config folder. The copy is also where scaling happens, which the
+  -- exporter has no option for.
+  local source = Sprite(spr)
   if scale > 1 then
-    -- The exporter has no scale option, so a scaled copy is exported instead.
-    source = Sprite(spr)
     source:resize(spr.width * scale, spr.height * scale)
   end
   local args = {
@@ -197,9 +189,7 @@ OPS.export_sheet = function(ctx, p)
   end
   app.sprite = source
   local ok, err = pcall(app.command.ExportSpriteSheet, args)
-  if source ~= spr then
-    source:close()
-  end
+  source:close()
   app.sprite = spr
   if not ok then
     error(err, 0)
@@ -212,12 +202,12 @@ end
 
 OPS.export_layers = function(ctx, p)
   local spr = need_sprite(ctx)
-  local frame = frame_list(spr, p.frame or 1)[1]
+  local frame = one_frame(spr, p.frame)
   local buffer = Image(ImageSpec { width = spr.width, height = spr.height, colorMode = ColorMode.RGB })
   local layers, hidden = {}, {}
   for _, layer in ipairs(cel_layers(spr)) do
     local path = layer_path(layer)
-    if not p.include_hidden and not shown(spr, layer) then
+    if not p.include_hidden and not layer_shown(spr, layer) then
       table.insert(hidden, path)
     else
       with_only(spr, layer, function()
@@ -241,7 +231,7 @@ OPS.import_image = function(ctx, p)
   local spr = need_sprite(ctx)
   local layer, path = image_layer(spr, p.layer)
   require_editable(layer)
-  local frame = frame_list(spr, p.frame or 1)[1]
+  local frame = one_frame(spr, p.frame)
   local src = Image { fromFile = p.image }
   if src == nil or src.colorMode ~= ColorMode.RGB then
     fail("could not load the converted image")

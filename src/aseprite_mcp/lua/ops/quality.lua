@@ -29,17 +29,6 @@ local function frames_with_pixels(spr, layer)
   return found
 end
 
-local function shown(spr, layer)
-  local node = layer
-  while node ~= spr do
-    if not node.isVisible then
-      return false
-    end
-    node = node.parent
-  end
-  return true
-end
-
 local function count_named(spr, name)
   local n = 0
   for _, layer in ipairs(all_layers(spr)) do
@@ -296,7 +285,7 @@ OPS.check_animation = function(ctx, p)
           add("cel_off_canvas", "warning", string.format(
             "the cel of '%s' in frame %d lies entirely outside the canvas", layer_path(layer), n),
             { layer = layer_path(layer), frame = n })
-        elseif shown(spr, layer) then
+        elseif layer_shown(spr, layer) then
           visible = true
         end
       end

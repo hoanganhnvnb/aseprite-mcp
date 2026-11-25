@@ -197,6 +197,24 @@ async def test_save_copy_refuses_read_only_output(call, tmp_path: Path):
     assert output.read_bytes() == b"keep me"
 
 
+async def test_save_copy_of_animation_to_svg_names_the_frame_count(call, tmp_path: Path):
+    await call("create_sprite", path="a.aseprite", width=4, height=4)
+    await call("add_frames", path="a.aseprite", count=1)
+
+    with pytest.raises(ToolError, match="a .svg file holds one frame but the sprite has 2"):
+        await call("save_copy", path="a.aseprite", output="a.svg")
+
+    assert sorted(p.name for p in tmp_path.iterdir()) == ["a.aseprite"]
+
+
+async def test_save_copy_of_one_frame_to_svg(call, tmp_path: Path):
+    await call("create_sprite", path="a.aseprite", width=4, height=4, background="#ff0000")
+
+    await call("save_copy", path="a.aseprite", output="a.svg")
+
+    assert "<svg" in (tmp_path / "a.svg").read_text()
+
+
 async def test_batch_save_copy_to_unknown_format_saves_nothing(call, tmp_path: Path):
     await call("create_sprite", path="a.aseprite", width=4, height=4)
     before = (tmp_path / "a.aseprite").read_bytes()

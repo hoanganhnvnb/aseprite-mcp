@@ -77,10 +77,6 @@ local function optional_layer(spr, name)
   return layer
 end
 
-local function one_frame(spr, n)
-  return frame_list(spr, n or 1)[1]
-end
-
 local function area_of(spr, region)
   if region == nil then
     return spr.bounds

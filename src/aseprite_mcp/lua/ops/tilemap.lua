@@ -49,10 +49,6 @@ local function tile_word(n)
   return n == 1 and "1 tile" or (n .. " tiles")
 end
 
-local function one_frame(spr, n)
-  return frame_list(spr, n)[1]
-end
-
 OPS.get_tilemap_info = function(ctx, p)
   local spr = need_sprite(ctx)
   local layer = tilemap_layer(spr, p.layer)

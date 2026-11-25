@@ -19,14 +19,14 @@ end
 OPS.move_region = function(ctx, p)
   local spr = need_sprite(ctx)
   local layer, path = image_layer(spr, p.layer)
-  local frame = frame_list(spr, p.frame or 1)[1]
+  local frame = one_frame(spr, p.frame)
   local to_layer, to_path = layer, path
   if p.target_layer ~= nil then
     to_layer, to_path = image_layer(spr, p.target_layer)
   end
   local to_frame = frame
   if p.target_frame ~= nil then
-    to_frame = frame_list(spr, p.target_frame)[1]
+    to_frame = one_frame(spr, p.target_frame)
   end
   if not p.copy then
     require_editable(layer)

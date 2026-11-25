@@ -7,31 +7,11 @@
 -- Spans are stored as l * SPAN_SHIFT + r so a row sorts with plain numbers.
 local SPAN_SHIFT = 1 << 20
 
-local function draw_layer(spr, name)
-  if name == nil or name == "" then
-    for _, layer in ipairs(all_layers(spr)) do
-      if not layer.isGroup and not layer.isTilemap then
-        return layer, layer_path(layer)
-      end
-    end
-    fail("the sprite has no normal layer to draw on")
-  end
-  local layer = get_layer(spr, name)
-  local path = layer_path(layer)
-  if layer.isGroup then
-    fail("'" .. path .. "' is a group; draw on one of its layers")
-  end
-  if layer.isTilemap then
-    fail("'" .. path .. "' is a tilemap layer; drawing tools paint normal layers only")
-  end
-  return layer, path
-end
-
 -- Resolves layer, frame and create_cel; shared by every drawing op.
 local function draw_target(spr, p)
-  local layer, path = draw_layer(spr, p.layer)
+  local layer, path = image_layer(spr, p.layer)
   require_editable(layer)
-  local frame = frame_list(spr, p.frame or 1)[1]
+  local frame = one_frame(spr, p.frame)
   if layer:cel(frame) == nil and p.create_cel == false then
     fail(string.format("'%s' has no cel in frame %d; pass create_cel=true to add one",
       path, frame))

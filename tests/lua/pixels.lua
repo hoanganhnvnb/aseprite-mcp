@@ -73,7 +73,7 @@ for y = 0, spr.height - 1 do
     local mark = "."
     if cel and cel.bounds:contains(Rectangle(x, y, 1, 1)) then
       local value = cel.image:getPixel(x - cel.position.x, y - cel.position.y)
-      if not is_transparent(spr, value, layer) then
+      if select(4, pixel_rgba(spr, value, layer)) > 0 then
         mark = "#"
       end
     end

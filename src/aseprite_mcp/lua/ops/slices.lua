@@ -19,21 +19,13 @@ local function rect_of(r)
   return { x = r.x, y = r.y, w = r.width, h = r.height }
 end
 
-local function hex(c)
-  local out = string.format("#%02x%02x%02x", c.red, c.green, c.blue)
-  if c.alpha ~= 255 then
-    out = out .. string.format("%02x", c.alpha)
-  end
-  return out
-end
-
 local function slice_info(slice)
   return {
     name = slice.name,
     bounds = rect_of(slice.bounds),
     center = slice.center and rect_of(slice.center) or nil,
     pivot = slice.pivot and { x = slice.pivot.x, y = slice.pivot.y } or nil,
-    color = hex(slice.color),
+    color = color_hex(slice.color),
     data = slice.data or "",
   }
 end

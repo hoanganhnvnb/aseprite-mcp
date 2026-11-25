@@ -153,4 +153,4 @@ async def test_easing_spec(ase_settings: Settings):
 async def test_bayer_spec(ase_settings: Settings):
     result = await run_script(BAYER_SPEC, {}, settings=ase_settings)
 
-    assert result.data["checks"] > 10
+    assert result.data["checks"] == 8

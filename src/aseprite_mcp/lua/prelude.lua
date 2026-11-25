@@ -148,6 +148,27 @@ function layer_path(layer)
   return table.concat(parts, "/")
 end
 
+-- Visible itself and inside visible groups only.
+function layer_shown(spr, layer)
+  local node = layer
+  while node ~= spr do
+    if not node.isVisible then
+      return false
+    end
+    node = node.parent
+  end
+  return true
+end
+
+function find_tag(spr, name)
+  for _, tag in ipairs(spr.tags) do
+    if tag.name == name then
+      return tag
+    end
+  end
+  return nil
+end
+
 local function is_sequence(t)
   local n = 0
   for _ in pairs(t) do
@@ -191,10 +212,14 @@ function frame_list(spr, spec)
   return out
 end
 
+function one_frame(spr, n)
+  return frame_list(spr, n or 1)[1]
+end
+
 -- Formats that hold one image; saveCopyAs would write numbered files instead.
 local SINGLE_IMAGE = {
   png = true, jpg = true, jpeg = true, bmp = true, tga = true,
-  pcx = true, ico = true, webp = true, qoi = true,
+  pcx = true, pcc = true, ico = true, webp = true, qoi = true, svg = true, css = true,
 }
 
 function check_save_format(spr, target)
@@ -350,6 +375,14 @@ function color_mapper(spr, layer, max_work)
   end
 end
 
+-- "#rrggbb", with an alpha byte only when the colour is not opaque.
+function color_hex(c)
+  if c.alpha == 255 then
+    return string.format("#%02x%02x%02x", c.red, c.green, c.blue)
+  end
+  return string.format("#%02x%02x%02x%02x", c.red, c.green, c.blue, c.alpha)
+end
+
 function pixel_rgba(spr, value, layer)
   local mode = spr.colorMode
   if mode == ColorMode.RGB then
@@ -369,16 +402,6 @@ function pixel_rgba(spr, value, layer)
     return c.red, c.green, c.blue, c.alpha
   end
   fail("unsupported color mode")
-end
-
-function is_transparent(spr, value, layer)
-  local mode = spr.colorMode
-  if mode == ColorMode.RGB then
-    return pc.rgbaA(value) == 0
-  elseif mode == ColorMode.GRAY then
-    return pc.grayaA(value) == 0
-  end
-  return value == transparent_index(spr, layer)
 end
 
 -- Indexed sprites get a dedicated transparent entry at index 0 so the default
@@ -677,8 +700,17 @@ function with_target(spr, layer, frame, region, fn)
   end
 end
 
--- A layer that holds plain pixels: groups and tilemaps are refused.
+-- A layer that holds plain pixels: groups and tilemaps are refused. Without a name
+-- it is the bottom-most such layer.
 function image_layer(spr, name)
+  if name == nil or name == "" then
+    for _, layer in ipairs(all_layers(spr)) do
+      if not layer.isGroup and not layer.isTilemap then
+        return layer, layer_path(layer)
+      end
+    end
+    fail("the sprite has no image layer")
+  end
   local layer = get_layer(spr, name)
   local path = layer_path(layer)
   if layer.isGroup then
@@ -780,9 +812,4 @@ function bayer(n)
   end
   bayer_cache[n] = m
   return m
-end
-
--- Threshold in (0, 1) at canvas pixel (x, y); the matrix repeats over the canvas.
-function bayer_threshold(n, x, y)
-  return (bayer(n)[y % n + 1][x % n + 1] + 0.5) / (n * n)
 end

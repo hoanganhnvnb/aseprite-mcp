@@ -155,15 +155,6 @@ OPS.copy_frames = function(ctx, p)
   }
 end
 
-local function find_tag(spr, name)
-  for _, tag in ipairs(spr.tags) do
-    if tag.name == name then
-      return tag
-    end
-  end
-  return nil
-end
-
 OPS.set_tag = function(ctx, p)
   local spr = need_sprite(ctx)
   local count = #spr.frames
