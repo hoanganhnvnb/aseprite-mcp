@@ -119,3 +119,14 @@ async def test_single_layer_tools_require_only_the_layer():
     for name in ("delete_layer", "duplicate_layer", "merge_layer_down"):
         assert (await _schema(name))["required"] == ["path", "layer"]
     assert (await _schema("flatten_sprite"))["required"] == ["path"]
+
+
+async def test_frame_spec_schema_accepts_string_or_integer():
+    frames = (await _schema("delete_frames"))["properties"]["frames"]
+
+    assert [item["type"] for item in frames["anyOf"]] == ["string", "integer"]
+
+
+def test_frame_tools_are_batchable():
+    assert BATCHABLE["copy_frames"][:2] == ("copy_frames", True)
+    assert BATCHABLE["set_tag"][:2] == ("set_tag", True)

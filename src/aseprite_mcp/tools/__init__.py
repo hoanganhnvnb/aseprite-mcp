@@ -1,3 +1,3 @@
-from . import layers, misc, sprite
+from . import frames, layers, misc, sprite
 
-__all__ = ["layers", "misc", "sprite"]
+__all__ = ["frames", "layers", "misc", "sprite"]

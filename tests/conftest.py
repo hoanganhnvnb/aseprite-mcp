@@ -11,6 +11,7 @@ from aseprite_mcp.runner import run_script
 
 MakeSprite = Callable[..., Awaitable[Path]]
 PIXELS_SCRIPT = Path(__file__).parent / "lua" / "pixels.lua"
+CELS_SCRIPT = Path(__file__).parent / "lua" / "cels.lua"
 
 
 def pytest_collection_modifyitems(items: list[pytest.Item]) -> None:
@@ -59,15 +60,22 @@ def call(ase_settings: Settings, monkeypatch: pytest.MonkeyPatch):
 
 @pytest.fixture
 def pixels(ase_settings: Settings):
-    """Sets pixels as (x, y, r, g, b, a) and reads pixels at (x, y) in frame 1.
+    """Sets pixels as (x, y, r, g, b, a) and reads pixels at (x, y) as RGBA.
 
-    Works on the first layer unless `layer` names another one.
+    Works on frame 1 of the first layer unless `frame` or `layer` say otherwise.
+    With `values=True` it returns the stored pixel values (indices on indexed
+    sprites, -1 outside the cel) instead of RGBA.
     """
 
     async def run(
-        path: Path, put: Sequence = (), read: Sequence = (), layer: str | None = None
-    ) -> list[list[int]]:
-        params = {"set": [list(p) for p in put], "get": [list(r) for r in read]}
+        path: Path,
+        put: Sequence = (),
+        read: Sequence = (),
+        layer: str | None = None,
+        frame: int = 1,
+        values: bool = False,
+    ) -> list:
+        params = {"set": [list(p) for p in put], "get": [list(r) for r in read], "frame": frame}
         if layer is not None:
             params["layer"] = layer
         result = await run_script(
@@ -78,6 +86,30 @@ def pixels(ase_settings: Settings):
             open_file=path,
             save_to=path if put else None,
         )
-        return result.data["pixels"]
+        return result.data["values" if values else "pixels"]
+
+    return run
+
+
+@pytest.fixture
+def cels(ase_settings: Settings):
+    """Lists a layer's cel in every frame (False where there is none).
+
+    `update` takes (frame, opacity, z_index) tuples applied before reading.
+    """
+
+    async def run(path: Path, layer: str | None = None, update: Sequence = ()) -> list:
+        params: dict = {"update": [list(u) for u in update]}
+        if layer is not None:
+            params["layer"] = layer
+        result = await run_script(
+            CELS_SCRIPT,
+            params,
+            settings=ase_settings,
+            lock_paths=[path],
+            open_file=path,
+            save_to=path if update else None,
+        )
+        return result.data["cels"]
 
     return run

@@ -12,8 +12,8 @@ end
 local DIRECTION_NAMES = {
   [AniDir.FORWARD] = "forward",
   [AniDir.REVERSE] = "reverse",
-  [AniDir.PING_PONG] = "ping_pong",
-  [AniDir.PING_PONG_REVERSE] = "ping_pong_reverse",
+  [AniDir.PING_PONG] = "pingpong",
+  [AniDir.PING_PONG_REVERSE] = "pingpong_reverse",
 }
 
 local function layer_type(layer)
