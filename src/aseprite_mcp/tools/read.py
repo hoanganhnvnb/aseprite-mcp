@@ -234,6 +234,15 @@ def _frame_list(frames: list[int]) -> str:
     return ",".join(parts)
 
 
+def png_bytes(picture: Image.Image) -> bytes:
+    """Encode for speed rather than size: the client decodes the image once."""
+    if picture.mode == "RGBA" and picture.getchannel("A").getextrema() == (255, 255):
+        picture = picture.convert("RGB")
+    buffer = io.BytesIO()
+    picture.save(buffer, "PNG", compress_level=1)
+    return buffer.getvalue()
+
+
 def _load(path: Path, frame: int) -> Image.Image:
     try:
         with Image.open(path) as img:
@@ -296,8 +305,6 @@ async def view_sprite(
         tiles = [images[n] for n in shown]
     area = result["area"]
     picture, layout = sheet.render(tiles, (area["x"], area["y"]), scale, grid, rulers)
-    buffer = io.BytesIO()
-    picture.save(buffer, "PNG")
 
     zoom = f"1/{layout.shrink} size" if layout.shrink > 1 else f"scale {layout.scale}"
     which = "frame" if len(shown) == 1 else "frames"
@@ -312,4 +319,4 @@ async def view_sprite(
     if onion_skin:
         earlier = "frame" if onion_skin == 1 else f"{onion_skin} frames"
         lines.append(f"Onion skin: the {earlier} before each one shown faded beneath it.")
-    return [TextContent(type="text", text="\n".join(lines)), ImageResult(data=buffer.getvalue())]
+    return [TextContent(type="text", text="\n".join(lines)), ImageResult(data=png_bytes(picture))]

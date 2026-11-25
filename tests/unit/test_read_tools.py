@@ -1,3 +1,4 @@
+import io
 import warnings
 
 import pytest
@@ -6,7 +7,7 @@ from PIL import Image
 from aseprite_mcp import sheet
 from aseprite_mcp.errors import ToolError
 from aseprite_mcp.tools._registry import BATCHABLE, batch_op
-from aseprite_mcp.tools.read import ROW_CHARS, format_pixels
+from aseprite_mcp.tools.read import ROW_CHARS, format_pixels, png_bytes
 
 
 def rgba_value(r: int, g: int, b: int, a: int) -> int:
@@ -132,3 +133,23 @@ def test_sheet_onion_skin_fades_older_frames():
     merged = sheet.onion([old], current)
 
     assert merged.getpixel((0, 0)) == (255, 0, 0, 128)
+
+
+def test_png_bytes_stores_opaque_picture_as_rgb():
+    picture = Image.new("RGBA", (3, 2), (10, 20, 30, 255))
+    picture.putpixel((2, 1), (200, 100, 50, 255))
+
+    decoded = Image.open(io.BytesIO(png_bytes(picture)))
+
+    assert decoded.mode == "RGB"
+    assert decoded.convert("RGBA").tobytes() == picture.tobytes()
+
+
+def test_png_bytes_keeps_translucent_pixels():
+    picture = Image.new("RGBA", (3, 2), (10, 20, 30, 255))
+    picture.putpixel((0, 0), (200, 100, 50, 90))
+
+    decoded = Image.open(io.BytesIO(png_bytes(picture)))
+
+    assert decoded.mode == "RGBA"
+    assert decoded.tobytes() == picture.tobytes()
