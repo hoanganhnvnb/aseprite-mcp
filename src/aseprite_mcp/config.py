@@ -1,5 +1,3 @@
-"""Runtime settings, read from environment variables."""
-
 import math
 import os
 import shutil

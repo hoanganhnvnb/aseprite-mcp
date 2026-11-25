@@ -1,4 +1,5 @@
 import os
+import sys
 from pathlib import Path
 
 import pytest
@@ -62,9 +63,10 @@ def test_find_aseprite_bad_env_path_returns_none(tmp_path):
 
 
 def test_find_aseprite_uses_path_lookup(tmp_path):
-    exe = tmp_path / "aseprite"
+    exe = tmp_path / ("aseprite.exe" if sys.platform == "win32" else "aseprite")
     exe.write_text("")
-    exe.chmod(0o755)
+    if sys.platform != "win32":
+        exe.chmod(0o755)
     found = find_aseprite({"PATH": str(tmp_path)}, "linux")
     assert found is not None and Path(found) == exe
 

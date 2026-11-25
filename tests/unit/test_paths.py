@@ -26,6 +26,7 @@ def test_resolve_relative_against_root(tmp_path):
 
 def test_resolve_expands_home(tmp_path, monkeypatch):
     monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.setenv("USERPROFILE", str(tmp_path))
     s = make_settings(tmp_path / "other")
     assert resolve_path("~/x.aseprite", s, must_exist=False) == tmp_path.resolve() / "x.aseprite"
 
@@ -45,7 +46,10 @@ def test_resolve_sandbox_rejects_symlink_escape(tmp_path):
     root.mkdir()
     outside = tmp_path / "outside"
     outside.mkdir()
-    (root / "link").symlink_to(outside, target_is_directory=True)
+    try:
+        (root / "link").symlink_to(outside, target_is_directory=True)
+    except OSError:
+        pytest.skip("symlinks not available")
     s = make_settings(root, sandbox=True)
     with pytest.raises(ToolError):
         resolve_path("link/x.aseprite", s, must_exist=False)
@@ -84,3 +88,35 @@ def test_resolve_existing_ok(tmp_path):
 def test_resolve_empty_path_raises(tmp_path):
     with pytest.raises(ToolError):
         resolve_path("  ", make_settings(tmp_path), must_exist=False)
+
+
+def test_resolve_sandbox_rejects_sibling_with_shared_prefix(tmp_path):
+    root = tmp_path / "root"
+    root.mkdir()
+    (tmp_path / "root2").mkdir()
+    with pytest.raises(ToolError):
+        resolve_path("../root2/x.aseprite", make_settings(root, sandbox=True), must_exist=False)
+
+
+def test_resolve_sandbox_rejects_home_outside_root(tmp_path, monkeypatch):
+    monkeypatch.setenv("HOME", str(tmp_path / "home"))
+    monkeypatch.setenv("USERPROFILE", str(tmp_path / "home"))
+    root = tmp_path / "root"
+    root.mkdir()
+    with pytest.raises(ToolError):
+        resolve_path("~/x.aseprite", make_settings(root, sandbox=True), must_exist=False)
+
+
+def test_resolve_must_exist_accepts_directory(tmp_path):
+    (tmp_path / "d").mkdir()
+    assert resolve_path("d", make_settings(tmp_path), must_exist=True).is_dir()
+
+
+def test_resolve_unknown_user_raises_tool_error(tmp_path):
+    with pytest.raises(ToolError):
+        resolve_path("~no_such_user_xyz/x.aseprite", make_settings(tmp_path), must_exist=False)
+
+
+def test_resolve_nul_byte_raises_tool_error(tmp_path):
+    with pytest.raises(ToolError):
+        resolve_path("a\0b.aseprite", make_settings(tmp_path), must_exist=False)
