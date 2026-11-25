@@ -21,7 +21,8 @@ CreateCel = Annotated[
 Blend = Annotated[
     bool,
     Field(
-        description="false: pixels get exactly this colour (transparent erases); "
+        description="false: pixels get exactly this colour (transparent erases, except on "
+        "a background layer, which ignores alpha); "
         "true: the colour is alpha-blended over what is there"
     ),
 ]
