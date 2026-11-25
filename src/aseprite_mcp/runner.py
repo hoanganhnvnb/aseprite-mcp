@@ -93,10 +93,20 @@ def remove_temp_files(tmp: Path) -> None:
             Path(entry.path).unlink(missing_ok=True)
 
 
+def _taskkill() -> str:
+    # By full path so a taskkill.exe in the working directory or on PATH is not picked up.
+    system_root = os.environ.get("SystemRoot")
+    if system_root:
+        path = Path(system_root) / "System32" / "taskkill.exe"
+        if path.is_file():
+            return str(path)
+    return "taskkill"
+
+
 async def _kill_tree(proc: asyncio.subprocess.Process) -> None:
     if sys.platform == "win32":
         killer = await asyncio.create_subprocess_exec(
-            "taskkill",
+            _taskkill(),
             "/F",
             "/T",
             "/PID",
@@ -111,6 +121,10 @@ async def _kill_tree(proc: asyncio.subprocess.Process) -> None:
         try:
             os.killpg(proc.pid, signal.SIGKILL)
         except ProcessLookupError:
+            pass
+        except PermissionError:
+            # macOS can answer EPERM for a group whose leader already exited; the
+            # child itself is still killed below.
             pass
     try:
         proc.kill()

@@ -11,7 +11,7 @@ import pytest
 
 from aseprite_mcp.config import Settings
 from aseprite_mcp.errors import AsepriteError, ToolError
-from aseprite_mcp.runner import run_script
+from aseprite_mcp.runner import _lock_key, _taskkill, run_script
 
 FAKE = Path(__file__).parent.parent / "fake_aseprite.py"
 SCRIPT = Path("unused.lua")
@@ -227,3 +227,54 @@ async def test_read_only_target_is_refused(settings: Settings, tmp_path: Path):
 
     assert target.read_text() == "old"
     assert stat.S_IMODE(target.stat().st_mode) == 0o444
+
+
+def test_lock_key_is_the_same_through_dot_dot(tmp_path: Path):
+    (tmp_path / "x").mkdir()
+
+    assert _lock_key(tmp_path / "x" / ".." / "f.aseprite") == _lock_key(tmp_path / "f.aseprite")
+
+
+def test_lock_key_follows_symlinks(tmp_path: Path):
+    target = tmp_path / "f.aseprite"
+    target.write_text("")
+    link = tmp_path / "link.aseprite"
+    try:
+        link.symlink_to(target)
+    except OSError:
+        pytest.skip("symlinks not available")
+
+    assert _lock_key(link) == _lock_key(target)
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="process groups are POSIX only")
+async def test_kill_falls_back_to_the_child_when_killpg_is_refused(
+    settings: Settings, monkeypatch: pytest.MonkeyPatch
+):
+    def refuse(pid: int, sig: int) -> None:
+        raise PermissionError(1, "Operation not permitted")
+
+    monkeypatch.setattr(os, "killpg", refuse)
+    started = time.monotonic()
+
+    with pytest.raises(AsepriteError, match="timed out"):
+        await run_script(
+            SCRIPT, {"fake": "ok", "delay": 30}, settings=replace(settings, timeout=1.0)
+        )
+
+    assert time.monotonic() - started < 10
+
+
+def test_taskkill_is_taken_from_system32(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    exe = tmp_path / "System32" / "taskkill.exe"
+    exe.parent.mkdir()
+    exe.write_text("")
+    monkeypatch.setenv("SystemRoot", str(tmp_path))
+
+    assert _taskkill() == str(exe)
+
+
+def test_taskkill_falls_back_to_the_bare_name(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.setenv("SystemRoot", str(tmp_path))
+
+    assert _taskkill() == "taskkill"

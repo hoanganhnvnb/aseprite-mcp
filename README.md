@@ -129,8 +129,9 @@ existing one unless you pass `overwrite: true`. Edits are written to a temporary
 file first and only replace the sprite when the whole run succeeded, so a failed or
 timed-out call leaves the original untouched. The new file keeps the old one's
 permissions, but it is a new file: hard links to the old one are not updated. A
-read-only file is refused before anything runs. Calls on the same file run one after
-another.
+read-only file is refused before anything runs. Within one server, calls on the
+same file run one after another; separate server processes (or other programs)
+editing the same file at once are not coordinated.
 
 ## File formats
 
