@@ -22,19 +22,19 @@ or its authors.
 Run it straight from GitHub with uv:
 
 ```sh
-uvx --from git+https://github.com/<owner>/aseprite-mcp aseprite-mcp --check
+uvx --from git+https://github.com/hoanganhnvnb/aseprite-mcp aseprite-mcp --check
 ```
 
 or install it with pipx:
 
 ```sh
-pipx install git+https://github.com/<owner>/aseprite-mcp
+pipx install git+https://github.com/hoanganhnvnb/aseprite-mcp
 ```
 
 or from a checkout:
 
 ```sh
-git clone https://github.com/<owner>/aseprite-mcp
+git clone https://github.com/hoanganhnvnb/aseprite-mcp
 cd aseprite-mcp
 python -m venv .venv
 .venv/bin/pip install -e .
@@ -68,7 +68,7 @@ Most MCP clients take a JSON block like this (Linux / macOS):
   "mcpServers": {
     "aseprite": {
       "command": "uvx",
-      "args": ["--from", "git+https://github.com/<owner>/aseprite-mcp", "aseprite-mcp"],
+      "args": ["--from", "git+https://github.com/hoanganhnvnb/aseprite-mcp", "aseprite-mcp"],
       "env": {
         "ASEPRITE_PATH": "/Applications/Aseprite.app/Contents/MacOS/aseprite",
         "ASEPRITE_MCP_ROOT": "/home/me/pixel-art"
