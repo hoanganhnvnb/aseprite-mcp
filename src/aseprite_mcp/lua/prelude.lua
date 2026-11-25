@@ -206,6 +206,30 @@ function check_save_format(spr, target)
   end
 end
 
+-- Saving edits back to a file. Anything but .aseprite keeps only the flattened
+-- image (and frames for .gif): layers, tilemaps, tags and slices are dropped on save
+-- and missing when the file is reopened, so refuse instead of losing them silently.
+function check_edit_target(spr, target)
+  check_save_format(spr, target)
+  local ext = (target or ""):match("%.([^.\\/]+)$")
+  if ext == nil or ext:lower() == "aseprite" or ext:lower() == "ase" then
+    return
+  end
+  local layers = spr.layers
+  if #layers > 1 or layers[1].isGroup then
+    fail(string.format("a .%s file holds a single flat layer but the sprite would have %d "
+      .. "layers; run flatten_sprite first, or save_copy to an .aseprite file and edit that",
+      ext, #all_layers(spr)))
+  end
+  local lost = layers[1].isTilemap and "tilemap layers"
+    or #spr.tags > 0 and "tags"
+    or #spr.slices > 0 and "slices"
+  if lost then
+    fail(string.format("a .%s file cannot store %s; save_copy to an .aseprite file and edit that",
+      ext, lost))
+  end
+end
+
 local pc = app.pixelColor
 
 local function luma(r, g, b)

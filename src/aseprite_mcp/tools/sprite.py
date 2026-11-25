@@ -40,8 +40,10 @@ async def create_sprite(
 ) -> dict[str, Any]:
     """Create a sprite file with one layer and one frame and return its info.
 
-    The format follows the extension (.aseprite keeps layers and frames). The folder must
-    already exist. Without a background the layer is transparent.
+    The format follows the extension: .aseprite keeps layers, frames, tags and slices;
+    other formats hold one flat layer (.gif also keeps frames), and later edits they
+    cannot store are refused. The folder must already exist. Without a background the
+    layer is transparent.
     """
     target = _new_sprite_path(path, overwrite)
     create: dict[str, Any] = {"width": width, "height": height, "color_mode": color_mode}

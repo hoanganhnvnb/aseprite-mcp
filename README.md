@@ -127,6 +127,16 @@ file first and only replace the sprite when the whole run succeeded, so a failed
 timed-out call leaves the original untouched. Calls on the same file run one after
 another.
 
+## File formats
+
+Work in `.aseprite` files: only they keep layers, groups, tilemaps, tags and slices.
+Other formats store one flattened image (`.gif` also keeps frames, without tags), so an
+edit that would leave a `.png` or `.gif` with more than one layer, a tilemap, a tag or
+a slice is refused and the file stays as it was. `flatten_sprite` in the same batch
+makes such an edit fit, and `save_copy` turns any file into an `.aseprite` to work on.
+Opening `walk_1.png` reads that one file, never `walk_2.png` and the rest of a
+numbered sequence. `save_copy` and `export` write flattened copies on purpose.
+
 ## Conventions
 
 - Frames, layer stack positions and palette indices count from 1, as in the editor.

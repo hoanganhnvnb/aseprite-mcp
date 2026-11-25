@@ -180,7 +180,7 @@ local function main()
       mutated = mutated or (op.mutates == true and not op.unchanged)
     end
     if mutated then
-      check_save_format(spr, P.target)
+      check_edit_target(spr, P.target)
       spr:saveCopyAs(P.save_tmp)
       saved = true
     end

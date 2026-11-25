@@ -25,6 +25,8 @@ A good order of work:
 Conventions:
 - Frames, layer stack positions and palette indices count from 1.
 - Colours are "#RRGGBB", "#RRGGBBAA" or "transparent".
+- Work in .aseprite files. Other formats hold one flat layer with no tags or slices
+  (.gif keeps frames), so edits they cannot store are refused.
 - Use `batch` to apply many edits to one file at once; nothing is saved if one fails.
 - Read-only tools (`get_sprite_info`, `read_pixels`, `view_sprite`...) never change
   the file and are safe to call any time.

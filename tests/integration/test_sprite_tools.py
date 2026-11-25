@@ -397,3 +397,85 @@ async def test_opening_a_file_that_is_not_a_sprite(call, tmp_path: Path):
 
     with pytest.raises(ToolError, match=r"Aseprite could not open notes\.png$"):
         await call("get_sprite_info", path="notes.png")
+
+
+async def test_add_layer_on_png_is_refused(call, tmp_path: Path):
+    await call("create_sprite", path="s.png", width=4, height=4)
+    before = (tmp_path / "s.png").read_bytes()
+
+    with pytest.raises(ToolError, match=r"\.png file holds a single flat layer"):
+        await call("add_layer", path="s.png", name="extra")
+
+    assert (tmp_path / "s.png").read_bytes() == before
+
+
+async def test_add_group_on_gif_is_refused(call, tmp_path: Path):
+    await call("create_sprite", path="s.gif", width=4, height=4)
+
+    with pytest.raises(ToolError, match="single flat layer"):
+        await call(
+            "batch",
+            path="s.gif",
+            ops=[
+                {"tool": "add_layer", "args": {"name": "G", "kind": "group"}},
+                {"tool": "delete_layer", "args": {"layer": "Layer"}},
+            ],
+        )
+
+
+async def test_layer_added_and_flattened_in_one_batch_saves_to_png(call, tmp_path: Path):
+    await call("create_sprite", path="s.png", width=4, height=4)
+
+    await call(
+        "batch",
+        path="s.png",
+        ops=[
+            {"tool": "add_layer", "args": {"name": "extra"}},
+            {"tool": "flatten_sprite", "args": {}},
+        ],
+    )
+
+    info = await call("get_sprite_info", path="s.png")
+    assert len(info["layers"]) == 1
+
+
+async def test_set_tag_on_gif_is_refused(call, tmp_path: Path):
+    await call("create_sprite", path="s.gif", width=4, height=4)
+    await call("add_frames", path="s.gif", count=1)
+    before = (tmp_path / "s.gif").read_bytes()
+
+    with pytest.raises(ToolError, match=r"\.gif file cannot store tags"):
+        await call("set_tag", path="s.gif", name="run", from_frame=1, to_frame=2)
+
+    assert (tmp_path / "s.gif").read_bytes() == before
+
+
+async def test_create_slice_on_png_is_refused(call, tmp_path: Path):
+    await call("create_sprite", path="s.png", width=4, height=4)
+
+    with pytest.raises(ToolError, match=r"\.png file cannot store slices"):
+        await call("create_slice", path="s.png", name="hit", rect={"x": 0, "y": 0, "w": 2, "h": 2})
+
+
+async def test_save_copy_to_png_flattens_layers(call, pixels, tmp_path: Path):
+    await call("create_sprite", path="a.aseprite", width=4, height=4)
+    await call("add_layer", path="a.aseprite", name="top")
+
+    await call("save_copy", path="a.aseprite", output="flat.png")
+
+    info = await call("get_sprite_info", path="flat.png")
+    assert len(info["layers"]) == 1
+
+
+async def test_tilemap_layer_on_png_is_refused(call, tmp_path: Path):
+    await call("create_sprite", path="s.png", width=4, height=4)
+
+    with pytest.raises(ToolError, match=r"\.png file cannot store tilemap layers"):
+        await call(
+            "batch",
+            path="s.png",
+            ops=[
+                {"tool": "add_layer", "args": {"name": "map", "kind": "tilemap", "tile_size": 2}},
+                {"tool": "delete_layer", "args": {"layer": "Layer"}},
+            ],
+        )
