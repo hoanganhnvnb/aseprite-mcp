@@ -301,3 +301,33 @@ def test_running_preview_does_not_keep_the_process_alive(site):
     done = subprocess.run([sys.executable, "-c", script, str(site)], check=False, timeout=10)
 
     assert done.returncode == 0
+
+
+def test_preview_lists_a_folder_instead_of_its_index_page(preview, site):
+    (site / "sub").mkdir()
+    (site / "sub" / "index.html").write_text("<script>alert(1)</script>")
+    (site / "sub" / "index.htm").write_text("<script>alert(2)</script>")
+    preview.start(site)
+
+    response = request(preview, "sub/")
+
+    assert response.status == 200
+    assert b"<script>" not in response.body
+    assert b"index.htm" not in response.body
+    assert status(preview, "sub/index.html") == 404
+
+
+@pytest.mark.skipif(not hasattr(os, "symlink"), reason="needs symlinks")
+def test_preview_never_serves_a_symlinked_index_page(preview, site):
+    (site.parent / "secret.txt").write_text("private")
+    (site / "sub2").mkdir()
+    try:
+        (site / "sub2" / "index.html").symlink_to(site.parent / "secret.txt")
+    except OSError:
+        pytest.skip("cannot create symlinks here")
+    preview.start(site)
+
+    response = request(preview, "sub2/")
+
+    assert b"private" not in response.body
+    assert status(preview, "sub2/index.html") == 404

@@ -30,10 +30,9 @@ EXPORT_EXTENSIONS = tuple(sorted(IMAGE_EXTENSIONS + ANIMATED_EXTENSIONS))
 MAX_SCALE = 32
 # Pixels one export call may write, every frame counted.
 MAX_EXPORT_PIXELS = 4096 * 4096 * 4
-# import_image into an indexed sprite compares every colour of the image with every
-# palette entry; this many comparisons take about a second.
-MAX_PALETTE_WORK = 1 << 24
-MAX_COUNTED_COLORS = 1 << 20
+# import_image into an indexed sprite compares every colour it draws with every
+# palette entry; this many comparisons take a few seconds.
+MAX_PALETTE_WORK = 1 << 26
 # Coarse file systems (FAT) store modification times in 2-second steps.
 MTIME_SLACK = 2.0
 
@@ -326,11 +325,10 @@ async def export_layers(
     }
 
 
-def _load_rgba(source: Path, dest: Path) -> tuple[int, int | None]:
+def _load_rgba(source: Path, dest: Path) -> int:
     """Writes the first frame of any image Pillow reads to dest as an RGBA PNG.
 
-    Returns the number of non-transparent pixels and of colours (None past
-    MAX_COUNTED_COLORS).
+    Returns the number of non-transparent pixels.
     """
     try:
         with warnings.catch_warnings():
@@ -348,9 +346,7 @@ def _load_rgba(source: Path, dest: Path) -> tuple[int, int | None]:
     except (UnidentifiedImageError, OSError, ValueError, SyntaxError) as e:
         raise ToolError(f"{source} is not an image Pillow can read: {e}") from None
     rgba.save(dest, "PNG")
-    opaque = w * h - rgba.getchannel("A").histogram()[0]
-    colors = rgba.getcolors(MAX_COUNTED_COLORS)
-    return opaque, None if colors is None else len(colors)
+    return w * h - rgba.getchannel("A").histogram()[0]
 
 
 @server.mcp.tool()
@@ -371,8 +367,9 @@ async def import_image(
     non-transparent pixels drawn and dropped. The cel is created or grown as needed
     (a linked cel is unlinked first). Indexed sprites get the nearest palette entry
     for each colour (partly transparent pixels become opaque), grayscale ones the
-    luma; for indexed sprites the image's colour count times the palette size may be
-    at most 16777216 (reduce the colours of photo-like images first). Locked layers,
+    luma. For indexed sprites, the number of different RGB colours drawn times the
+    palette size may be at most 67108864 (reduce the colours of photo-like images
+    first); nothing changes when it is more. Locked layers,
     groups and tilemap layers are refused. Images up to 4096x4096. Not available in
     batch.
     """
@@ -383,11 +380,10 @@ async def import_image(
         raise ToolError(f"{source} is not a file")
     with tempfile.TemporaryDirectory(prefix="aseprite-mcp-import-") as tmp:
         converted = Path(tmp) / "image.png"
-        opaque, colors = _load_rgba(source, converted)
+        opaque = _load_rgba(source, converted)
         params = {
             "image": str(converted),
             "opaque": opaque,
-            "colors": colors,
             "max_palette_work": MAX_PALETTE_WORK,
             "layer": layer,
             "frame": frame,

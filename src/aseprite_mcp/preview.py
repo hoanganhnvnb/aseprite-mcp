@@ -46,6 +46,10 @@ class _Handler(SimpleHTTPRequestHandler):
     """
 
     server: _Server
+    # A folder always gets the filtered listing. The base class would otherwise serve
+    # its index.html, a file send_head never checked; with this off, the file it opens
+    # is always the translated path send_head checked.
+    index_pages = ()
 
     def _below_token(self, path: str) -> str | None:
         token, _, rest = urllib.parse.urlsplit(path).path.removeprefix("/").partition("/")

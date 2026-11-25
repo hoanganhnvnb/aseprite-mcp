@@ -1,6 +1,7 @@
 import dataclasses
 import json
 import os
+import random
 from pathlib import Path
 
 import pytest
@@ -826,19 +827,65 @@ async def test_import_image_with_too_many_colours_for_indexed(call, monkeypatch,
     monkeypatch.setattr(export, "MAX_PALETTE_WORK", 50)
     write_png(tmp_path / "in.png", {(0, 0): (255, 0, 0, 255), (1, 0): (0, 0, 255, 255)})
 
-    with pytest.raises(ToolError, match="the image has 3 colours; .* too much work"):
+    with pytest.raises(ToolError, match="too many colours: matching more than 1 colours"):
         await call("import_image", path="a.aseprite", image="in.png", layer="Layer 1")
 
 
-async def test_import_image_counts_colours_in_python_past_the_limit(call, monkeypatch, tmp_path):
+async def test_import_image_ignores_colours_of_transparent_pixels(
+    call, pixels, monkeypatch, tmp_path
+):
     from aseprite_mcp.tools import export
 
     await new_sprite(call, color_mode="indexed")
-    monkeypatch.setattr(export, "MAX_COUNTED_COLORS", 2)
+    monkeypatch.setattr(export, "MAX_PALETTE_WORK", 40)
+    junk = Image.frombytes("RGB", (300, 300), random.Random(1).randbytes(300 * 300 * 3))
+    junk.putalpha(0)
+    junk.putpixel((0, 0), (255, 255, 255, 255))
+    junk.save(tmp_path / "in.png")
+
+    result = await call("import_image", path="a.aseprite", image="in.png", layer="Layer 1")
+
+    assert (result["placed"], result["clipped"]) == (1, 0)
+    assert await pixels(tmp_path / "a.aseprite", read=[(0, 0)]) == [[255, 255, 255, 255]]
+
+
+async def test_import_image_counts_alpha_variants_as_one_colour(call, monkeypatch, tmp_path):
+    from aseprite_mcp.tools import export
+
+    await new_sprite(call, w=16, h=16, color_mode="indexed")
+    monkeypatch.setattr(export, "MAX_PALETTE_WORK", 40)
+    img = Image.new("RGBA", (16, 16))
+    img.putdata([(255, 0, 0, a) for a in range(1, 256)] + [(255, 0, 0, 255)])
+    img.save(tmp_path / "in.png")
+
+    result = await call("import_image", path="a.aseprite", image="in.png", layer="Layer 1")
+
+    assert result["placed"] == 256
+
+
+async def test_import_image_counts_only_colours_on_the_canvas(call, monkeypatch, tmp_path):
+    from aseprite_mcp.tools import export
+
+    await new_sprite(call, color_mode="indexed")
+    monkeypatch.setattr(export, "MAX_PALETTE_WORK", 40)
     write_png(tmp_path / "in.png", {(0, 0): (255, 0, 0, 255), (1, 0): (0, 0, 255, 255)})
 
-    with pytest.raises(ToolError, match="the image has too many colours"):
-        await call("import_image", path="a.aseprite", image="in.png", layer="Layer 1")
+    result = await call("import_image", path="a.aseprite", image="in.png", layer="Layer 1", x=3)
+
+    assert (result["placed"], result["clipped"]) == (1, 1)
+
+
+async def test_import_image_prefers_opaque_black_over_transparent_index(
+    call, pixels, set_palette, tmp_path
+):
+    await new_sprite(call, color_mode="indexed")
+    path = tmp_path / "a.aseprite"
+    await set_palette(path, [(0, 0, 0, 0), (250, 0, 0, 255), (0, 0, 0, 255)])
+    write_png(tmp_path / "in.png", {(0, 0): (5, 5, 5, 255)})
+
+    await call("import_image", path="a.aseprite", image="in.png", layer="Layer 1")
+
+    assert await pixels(path, read=[(0, 0), (1, 0)], values=True) == [2, 0]
 
 
 async def test_import_image_into_rgb_sprite_has_no_colour_limit(call, monkeypatch, tmp_path):

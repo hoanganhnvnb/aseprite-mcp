@@ -258,8 +258,10 @@ function color_value(spr, rgba, layer)
 end
 
 -- color_value for many colours: map(r, g, b, a) gives the same values, with the
--- palette read once and each colour looked up once.
-function color_mapper(spr, layer)
+-- palette read once and each RGB looked up once. On indexed sprites every new colour
+-- is compared with every palette entry; `max_work` (optional) bounds the number of
+-- such comparisons, and the mapper fails once more colours arrive.
+function color_mapper(spr, layer, max_work)
   local mode = spr.colorMode
   if mode == ColorMode.GRAY then
     local opaque = layer ~= nil and layer.isBackground
@@ -280,7 +282,8 @@ function color_mapper(spr, layer)
       table.insert(entries, { i, c.red, c.green, c.blue })
     end
   end
-  local memo = {}
+  local memo, colors = {}, 0
+  local max_colors = max_work and max_work // math.max(#entries, 1)
   return function(r, g, b, a)
     if a == 0 and tindex ~= nil then
       return tindex
@@ -288,6 +291,12 @@ function color_mapper(spr, layer)
     local key = r << 16 | g << 8 | b
     local found = memo[key]
     if found == nil then
+      colors = colors + 1
+      if max_colors and colors > max_colors then
+        fail(string.format("too many colours: matching more than %d colours against the %d "
+          .. "palette entries is over the limit of %d comparisons; reduce the colours "
+          .. "first, or use an RGB sprite and convert it after", max_colors, #entries, max_work))
+      end
       local best_dist = math.huge
       found = tindex
       for _, e in ipairs(entries) do

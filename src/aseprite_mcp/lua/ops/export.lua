@@ -233,7 +233,7 @@ OPS.export_layers = function(ctx, p)
 end
 
 -- p.image is a PNG the server converted to RGBA; p.opaque counts its non-transparent
--- pixels and p.colors its colours (nil when there are too many to count). Its pixels
+-- pixels. Its pixels
 -- are drawn over the cel (transparent ones leave what is there); indexed sprites get
 -- the nearest palette entries, grayscale ones the luma. Pixels go through byte
 -- strings: per-pixel Image calls take minutes on large images.
@@ -253,15 +253,6 @@ OPS.import_image = function(ctx, p)
       src.width, src.height, x, y, spr.width, spr.height))
   end
   local mode = spr.colorMode
-  if mode == ColorMode.INDEXED then
-    local work = p.colors and p.colors * #spr.palettes[1]
-    if work == nil or work > p.max_palette_work then
-      fail(string.format("the image has %s colours; matching them against the %d palette "
-        .. "entries is too much work (colours x entries at most %d). Reduce its colours "
-        .. "first, or import into an RGB sprite and convert it after",
-        p.colors and tostring(p.colors) or "too many", #spr.palettes[1], p.max_palette_work))
-    end
-  end
 
   local part = Image(src, Rectangle(area.x - x, area.y - y, area.width, area.height))
   local bytes, byte, char = part.bytes, string.byte, string.char
@@ -291,7 +282,7 @@ OPS.import_image = function(ctx, p)
     return result
   end
 
-  local map = color_mapper(spr, layer)
+  local map = color_mapper(spr, layer, p.max_palette_work)
   local patch, old
   if mode == ColorMode.INDEXED then
     -- Indices cannot blend, and on a background layer the transparent index is an
