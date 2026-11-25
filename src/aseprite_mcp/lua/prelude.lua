@@ -512,3 +512,36 @@ EASINGS = {
   end,
   bounce = bounce_out,
 }
+
+-- Ordered dither matrices, built recursively: each doubling puts 4m, 4m+2, 4m+3 and
+-- 4m+1 in the four quadrants. bayer(n)[y + 1][x + 1] holds 0..n*n-1, each once.
+local bayer_cache = { [1] = { { 0 } } }
+
+function bayer(n)
+  local m = bayer_cache[n]
+  if m ~= nil then
+    return m
+  end
+  if math.type(n) ~= "integer" or n < 2 or n & (n - 1) ~= 0 then
+    fail("dither matrix size must be a power of two, got " .. tostring(n))
+  end
+  local half, h = bayer(n // 2), n // 2
+  m = {}
+  for y = 1, n do
+    m[y] = {}
+  end
+  for y = 1, h do
+    for x = 1, h do
+      local v = 4 * half[y][x]
+      m[y][x], m[y][x + h] = v, v + 2
+      m[y + h][x], m[y + h][x + h] = v + 3, v + 1
+    end
+  end
+  bayer_cache[n] = m
+  return m
+end
+
+-- Threshold in (0, 1) at canvas pixel (x, y); the matrix repeats over the canvas.
+function bayer_threshold(n, x, y)
+  return (bayer(n)[y % n + 1][x % n + 1] + 0.5) / (n * n)
+end

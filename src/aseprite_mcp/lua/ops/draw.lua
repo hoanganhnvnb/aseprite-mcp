@@ -579,3 +579,205 @@ OPS.fill_area = function(ctx, p)
   end
   return shape_result(t, paint_spans(t, s, p.color, false))
 end
+
+-- Runs of pixels computed by the caller, each { colour index, y, x0, x1 }, never
+-- overlapping. Runs are clipped to the canvas and painted one colour at a time.
+OPS.draw_runs = function(ctx, p)
+  local spr = need_sprite(ctx)
+  local t = draw_target(spr, p)
+  local sets, inside, total = {}, 0, 0
+  for _, run in ipairs(p.runs) do
+    local i, y, l, r = run[1], run[2], run[3], run[4]
+    total = total + r - l + 1
+    l, r = math.max(l, 0), math.min(r, spr.width - 1)
+    if y >= 0 and y < spr.height and l <= r then
+      inside = inside + r - l + 1
+      sets[i] = sets[i] or new_spans(spr)
+      add_span(sets[i], y, l, r)
+    end
+  end
+  for i, color in ipairs(p.colors) do
+    if sets[i] ~= nil then
+      paint_spans(t, sets[i], color, p.blend)
+    end
+  end
+  local result = shape_result(t, inside)
+  result.skipped_outside = total - inside
+  return result
+end
+
+-- Returns pen(color): a function from a stored value to the value to store, cached
+-- per colour so blenders and palette lookups are shared.
+local function pens(t, blend)
+  local made = {}
+  return function(color)
+    local key = ((color[1] * 256 + color[2]) * 256 + color[3]) * 256 + color[4]
+    local pen = made[key]
+    if pen == nil then
+      if blend and color[4] == 0 then
+        pen = function(old)
+          return old
+        end
+      elseif blend and color[4] < 255 then
+        pen = blender(t.spr, t.layer, color)
+      else
+        local value = color_value(t.spr, color, t.layer)
+        pen = function()
+          return value
+        end
+      end
+      made[key] = pen
+    end
+    return pen
+  end
+end
+
+-- The part of rect on the canvas, or nil.
+local function on_canvas(spr, rect)
+  local left, top = math.max(rect.x, 0), math.max(rect.y, 0)
+  local right = math.min(rect.x + rect.w, spr.width)
+  local bottom = math.min(rect.y + rect.h, spr.height)
+  if left >= right or top >= bottom then
+    return nil
+  end
+  return Rectangle(left, top, right - left, bottom - top)
+end
+
+-- Writes every pixel of area (on the canvas) through one-row patches: value_at(x, y,
+-- old) gives the value to store. The old values are only copied in when read_old is set.
+-- Without read_old, rows with the same row_key(y) are equal, so their patch is reused.
+local function paint_area(t, area, value_at, read_old, row_key)
+  local cel = writable(t, area)
+  local img = cel.image
+  local ox, oy = cel.position.x, cel.position.y
+  local x0, w = area.x, area.width
+  local scratch, done = new_image(t.spr, w, 1), {}
+  for y = area.y, area.y + area.height - 1 do
+    local key = not read_old and row_key and row_key(y)
+    local patch = key and done[key]
+    if not patch then
+      patch = key and new_image(t.spr, w, 1) or scratch
+      if read_old then
+        patch:drawImage(img, Point(ox - x0, oy - y), 255, BlendMode.SRC)
+      end
+      for i = 0, w - 1 do
+        patch:drawPixel(i, 0, value_at(x0 + i, y, read_old and patch:getPixel(i, 0)))
+      end
+      if key then
+        done[key] = patch
+      end
+    end
+    img:drawImage(patch, Point(x0 - ox, y - oy), 255, BlendMode.SRC)
+  end
+end
+
+local function area_result(t, spr, rect)
+  local area = on_canvas(spr, rect)
+  local painted = area and area.width * area.height or 0
+  local result = shape_result(t, painted)
+  result.skipped_outside = rect.w * rect.h - painted
+  return result, area
+end
+
+local function mix(a, b, num, den)
+  local out = {}
+  for i = 1, 4 do
+    -- a + (b - a) * num / den, rounded half up
+    out[i] = (2 * (a[i] * den + (b[i] - a[i]) * num) + den) // (2 * den)
+  end
+  return out
+end
+
+-- Stops are evenly spaced over the whole rect (first and last pixel get the end
+-- colours), so a clipped rect shows the same part of the gradient it would unclipped.
+OPS.draw_gradient = function(ctx, p)
+  local spr = need_sprite(ctx)
+  local t = draw_target(spr, p)
+  local rect, stops = p.rect, p.colors
+  local result, area = area_result(t, spr, rect)
+  if area == nil then
+    return result
+  end
+  local horizontal = p.direction ~= "vertical"
+  local start, first, last = rect.y, area.y, area.y + area.height - 1
+  if horizontal then
+    start, first, last = rect.x, area.x, area.x + area.width - 1
+  end
+  local segments = #stops - 1
+  local den = math.max((horizontal and rect.w or rect.h) - 1, 1)
+  -- per position along the gradient: segment k and the fraction num / den inside it
+  local ks, nums = {}, {}
+  for c = first, last do
+    local s = (c - start) * segments
+    local k = math.min(s // den, segments - 1)
+    ks[c], nums[c] = k + 1, s - k * den
+  end
+  local pen = pens(t, p.blend)
+  local n = p.dither or 0
+
+  if n == 0 then
+    local line = {}
+    for c = first, last do
+      line[c] = pen(mix(stops[ks[c]], stops[ks[c] + 1], nums[c], den))
+    end
+    if not p.blend then
+      local cel = writable(t, area)
+      local img, ox, oy = cel.image, cel.position.x, cel.position.y
+      for c = first, last do
+        if horizontal then
+          img:clear(Rectangle(c - ox, area.y - oy, 1, area.height), line[c]())
+        else
+          img:clear(Rectangle(area.x - ox, c - oy, area.width, 1), line[c]())
+        end
+      end
+      return result
+    end
+    paint_area(t, area, function(x, y, old)
+      return line[horizontal and x or y](old)
+    end, true)
+    return result
+  end
+
+  -- Ordered dither: the next stop wins where the fraction is above the threshold,
+  -- num / den > (2v + 1) / (2n^2), compared in integers.
+  local m, scale = bayer(n), 2 * n * n
+  local stop_pens = {}
+  for i, color in ipairs(stops) do
+    stop_pens[i] = pen(color)
+  end
+  paint_area(t, area, function(x, y, old)
+    local c = horizontal and x or y
+    local k = ks[c]
+    if nums[c] * scale > (2 * m[y % n + 1][x % n + 1] + 1) * den then
+      k = k + 1
+    end
+    return stop_pens[k](old)
+  end, p.blend, horizontal and function(y)
+    return y % n
+  end)
+  return result
+end
+
+-- color_b where the threshold at the canvas pixel is below density, color_a elsewhere.
+-- The matrix is anchored at the canvas origin, so neighbouring fills line up.
+OPS.fill_pattern = function(ctx, p)
+  local spr = need_sprite(ctx)
+  local t = draw_target(spr, p)
+  local result, area = area_result(t, spr, p.rect)
+  if area == nil then
+    return result
+  end
+  local n = p.matrix
+  local m, limit = bayer(n), 2 * n * n * p.density
+  local pen = pens(t, p.blend)
+  local a, b = pen(p.color_a), pen(p.color_b)
+  paint_area(t, area, function(x, y, old)
+    if 2 * m[y % n + 1][x % n + 1] + 1 < limit then
+      return b(old)
+    end
+    return a(old)
+  end, p.blend, function(y)
+    return y % n
+  end)
+  return result
+end

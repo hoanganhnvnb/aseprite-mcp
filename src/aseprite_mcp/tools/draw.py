@@ -1,8 +1,9 @@
-from typing import Annotated, Any
+from typing import Annotated, Any, Literal
 
 from pydantic import Field
 
-from ..colors import parse_color
+from .. import raster
+from ..colors import RGBA, parse_color
 from ..models import Color, Coord, Pixel, Point, Rect
 from ._registry import op_tool
 
@@ -199,3 +200,168 @@ def fill_area(
         "contiguous": contiguous,
         "tolerance": tolerance,
     }
+
+
+MATRIX_SIZE = {"bayer2": 2, "bayer4": 4, "bayer8": 8}
+Matrix = Literal["bayer2", "bayer4", "bayer8"]
+
+
+@op_tool("draw_gradient", mutates=True)
+def draw_gradient(
+    rect: Rect,
+    colors: Annotated[list[Color], Field(min_length=2, max_length=16)],
+    direction: Literal["horizontal", "vertical"] = "horizontal",
+    dither: Literal["none", "bayer2", "bayer4", "bayer8"] = "none",
+    layer: DrawLayer = "",
+    frame: DrawFrame = 1,
+    create_cel: CreateCel = True,
+    blend: Blend = False,
+) -> dict[str, Any]:
+    """Fill rect with a linear gradient through evenly spaced colour stops.
+
+    The first column (or row, for vertical) gets the first colour and the last one the
+    last colour, measured over the whole rect even where it leaves the canvas; only
+    the part on the canvas is painted and the rest is counted in skipped_outside.
+    dither="none" mixes the two neighbouring stops per channel, alpha included, rounding
+    halves up; indexed sprites then get the nearest palette entry for each mix. A bayer
+    dither uses only the stop colours: each pixel takes the next stop when its position
+    in the segment (0..1) is above the matrix threshold at its canvas position.
+    """
+    return {
+        **target(layer, frame, create_cel),
+        "rect": rect.model_dump(),
+        "colors": [rgba(c) for c in colors],
+        "direction": direction,
+        "dither": MATRIX_SIZE.get(dither, 0),
+        "blend": blend,
+    }
+
+
+@op_tool("fill_pattern", mutates=True)
+def fill_pattern(
+    rect: Rect,
+    color_a: Color,
+    color_b: Color,
+    density: Annotated[float, Field(ge=0, le=1, description="Share of pixels that get color_b")],
+    matrix: Matrix = "bayer4",
+    layer: DrawLayer = "",
+    frame: DrawFrame = 1,
+    create_cel: CreateCel = True,
+    blend: Blend = False,
+) -> dict[str, Any]:
+    """Fill rect with an ordered dither of two colours (clipped to the canvas).
+
+    A pixel gets color_b when the Bayer threshold (v + 0.5) / n^2 at its canvas
+    position is below density, color_a otherwise: 0 is all color_a, 1 all color_b.
+    The matrix is anchored at canvas (0, 0), so separate fills tile seamlessly; with
+    bayer2 and density 0.5, color_b lands where x + y is even.
+    """
+    return {
+        **target(layer, frame, create_cel),
+        "rect": rect.model_dump(),
+        "color_a": rgba(color_a),
+        "color_b": rgba(color_b),
+        "density": density,
+        "matrix": MATRIX_SIZE[matrix],
+        "blend": blend,
+    }
+
+
+def runs_op(
+    shapes: list[tuple[RGBA, raster.Rows]], layer: str, frame: int, create_cel: bool, blend: bool
+) -> dict[str, Any]:
+    """Params for the draw_runs op: one colour per distinct RGBA, runs as [i, y, x0, x1]."""
+    index: dict[RGBA, int] = {}
+    runs = []
+    for color, rows in shapes:
+        i = index.setdefault(color, len(index) + 1)
+        runs += [[i, y, x0, x1] for y, spans in rows.items() for x0, x1 in spans]
+    return {
+        **target(layer, frame, create_cel),
+        "colors": [list(color) for color in index],
+        "runs": runs,
+        "blend": blend,
+    }
+
+
+@op_tool("draw_runs", mutates=True)
+def draw_ascii(
+    x: Coord,
+    y: Coord,
+    rows: Annotated[
+        list[Annotated[str, Field(min_length=1, max_length=256)]],
+        Field(min_length=1, max_length=256),
+    ],
+    legend: Annotated[
+        dict[str, Color], Field(min_length=1, max_length=256, description="Character -> colour")
+    ],
+    outline: Annotated[
+        Color | None, Field(description="Colour for a 1-pixel ring around the art")
+    ] = None,
+    layer: DrawLayer = "",
+    frame: DrawFrame = 1,
+    create_cel: CreateCel = True,
+    blend: Blend = False,
+) -> dict[str, Any]:
+    """Draw pixel art written as text; the first character of the first row is at (x, y).
+
+    Each character is one pixel in its legend colour; '.' and ' ' leave the pixel as it
+    is and cannot be legend keys. Keys are single characters (any Unicode character).
+    Rows may differ in length. outline paints every pixel next to (left, right, above,
+    below) a non-transparent art pixel that is not part of the art itself. Pixels off
+    the canvas are skipped and counted in skipped_outside; painted counts art and
+    outline pixels.
+    """
+    for key in legend:
+        if len(key) != 1:
+            raise ValueError(f"legend key {key!r} must be a single character")
+        if key in raster.UNTOUCHED:
+            raise ValueError(
+                "'.' and ' ' always leave the pixel untouched; remove them from legend"
+            )
+    by_char = raster.ascii_art(x, y, rows, legend)
+    colors = {char: parse_color(legend[char]) for char in by_char}
+    shapes = [(colors[char], art) for char, art in by_char.items()]
+    if outline is not None:
+        visible = raster.union(*(art for char, art in by_char.items() if colors[char][3] > 0))
+        ring = raster.outline(visible, raster.union(*by_char.values()))
+        shapes.append((parse_color(outline), ring))
+    return runs_op(shapes, layer, frame, create_cel, blend)
+
+
+@op_tool("draw_runs", mutates=True)
+def draw_isometric_box(
+    x: Coord,
+    y: Coord,
+    w: Annotated[int, Field(ge=1, le=128, description="Tiles along the right-going axis")],
+    d: Annotated[int, Field(ge=1, le=128, description="Tiles along the left-going axis")],
+    h: Annotated[int, Field(ge=0, le=256, description="Height of the side faces in pixels")],
+    top: Color,
+    left: Color,
+    right: Color,
+    outline: Annotated[
+        Color | None, Field(description="Colour for a 1-pixel ring around the box")
+    ] = None,
+    layer: DrawLayer = "",
+    frame: DrawFrame = 1,
+    create_cel: CreateCel = True,
+    blend: Blend = False,
+) -> dict[str, Any]:
+    """Draw a 2:1 isometric box: a top face over a left and a right side face.
+
+    (x, y) is the top corner of the top face, the point where pixel (x, y)'s top-left
+    corner is; the two topmost pixels are (x - 1, y) and (x, y). From there the top
+    face runs w tiles down-right and d tiles down-left, each tile step moving 2 px
+    sideways and 1 px down. The left face hangs h px below the lower-left edge
+    (2*w px wide), the right face below the lower-right edge (2*d px wide). The box
+    covers columns x - 2*d .. x + 2*w - 1 and rows y .. y + w + d + h - 1. A pixel
+    belongs to the face that contains its centre, so faces never overlap and leave no
+    gaps. outline paints the pixels just outside the box (left, right, above, below).
+    Pixels off the canvas are skipped and counted; painted includes the outline.
+    """
+    faces = raster.isometric_box(x, y, w, d, h)
+    shapes = [(parse_color(c), face) for c, face in zip((top, left, right), faces)]
+    if outline is not None:
+        box = raster.union(*faces)
+        shapes.append((parse_color(outline), raster.outline(box, box)))
+    return runs_op(shapes, layer, frame, create_cel, blend)

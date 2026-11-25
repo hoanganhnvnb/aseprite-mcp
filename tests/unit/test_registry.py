@@ -221,3 +221,57 @@ async def test_fill_area_schema_has_no_blend():
 
     assert "blend" not in props
     assert (props["tolerance"]["minimum"], props["tolerance"]["maximum"]) == (0, 255)
+
+
+def test_part_b_draw_tools_are_batchable_mutations():
+    assert BATCHABLE["draw_gradient"][:2] == ("draw_gradient", True)
+    assert BATCHABLE["fill_pattern"][:2] == ("fill_pattern", True)
+    assert BATCHABLE["draw_ascii"][:2] == ("draw_runs", True)
+    assert BATCHABLE["draw_isometric_box"][:2] == ("draw_runs", True)
+
+
+async def test_part_b_draw_tools_required_params():
+    required = {
+        "draw_gradient": ["path", "rect", "colors"],
+        "fill_pattern": ["path", "rect", "color_a", "color_b", "density"],
+        "draw_ascii": ["path", "x", "y", "rows", "legend"],
+        "draw_isometric_box": ["path", "x", "y", "w", "d", "h", "top", "left", "right"],
+    }
+    for name, params in required.items():
+        schema = await _schema(name)
+        assert schema["required"] == params
+        assert schema["properties"]["blend"]["default"] is False
+
+
+async def test_draw_gradient_schema():
+    props = (await _schema("draw_gradient"))["properties"]
+
+    assert (props["colors"]["minItems"], props["colors"]["maxItems"]) == (2, 16)
+    assert props["direction"]["enum"] == ["horizontal", "vertical"]
+    assert props["dither"]["enum"] == ["none", "bayer2", "bayer4", "bayer8"]
+    assert props["dither"]["default"] == "none"
+
+
+async def test_fill_pattern_schema():
+    props = (await _schema("fill_pattern"))["properties"]
+
+    assert (props["density"]["minimum"], props["density"]["maximum"]) == (0, 1)
+    assert props["matrix"]["enum"] == ["bayer2", "bayer4", "bayer8"]
+    assert props["matrix"]["default"] == "bayer4"
+
+
+async def test_draw_ascii_schema():
+    props = (await _schema("draw_ascii"))["properties"]
+
+    assert (props["rows"]["minItems"], props["rows"]["maxItems"]) == (1, 256)
+    assert props["rows"]["items"]["maxLength"] == 256
+    assert props["outline"]["default"] is None
+
+
+async def test_draw_isometric_box_schema():
+    props = (await _schema("draw_isometric_box"))["properties"]
+
+    assert (props["w"]["minimum"], props["w"]["maximum"]) == (1, 128)
+    assert (props["d"]["minimum"], props["d"]["maximum"]) == (1, 128)
+    assert (props["h"]["minimum"], props["h"]["maximum"]) == (0, 256)
+    assert "z" not in props

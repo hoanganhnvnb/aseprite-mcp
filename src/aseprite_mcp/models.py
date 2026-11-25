@@ -8,10 +8,10 @@ from .colors import parse_color
 class Rect(BaseModel):
     """Rectangle in sprite pixels; x and y may be negative."""
 
-    x: int
-    y: int
-    w: int = Field(ge=1)
-    h: int = Field(ge=1)
+    x: int = Field(ge=-65535, le=65535)
+    y: int = Field(ge=-65535, le=65535)
+    w: int = Field(ge=1, le=131072)
+    h: int = Field(ge=1, le=131072)
 
 
 def _check_color(value: str) -> str:
