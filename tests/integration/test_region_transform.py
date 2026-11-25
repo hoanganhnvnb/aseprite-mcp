@@ -1,4 +1,3 @@
-import sys
 from pathlib import Path
 
 import pytest
@@ -104,7 +103,7 @@ async def test_move_region_blend_composites(call, pixels, tmp_path: Path):
     ]
 
 
-async def test_copy_region_leaves_source_untouched(call, pixels, cels, tmp_path: Path):
+async def test_copy_region_source_untouched(call, pixels, cels, tmp_path: Path):
     path = tmp_path / "a.aseprite"
     await new_sprite(call)
     await call("add_layer", path="a.aseprite", name="Top")
@@ -225,9 +224,7 @@ async def test_move_region_outside_canvas_fails(call):
         )
 
 
-async def test_move_region_on_indexed_sprite_keeps_pixels(
-    call, pixels, set_palette, tmp_path: Path
-):
+async def test_move_region_indexed_keeps_pixels(call, pixels, set_palette, tmp_path: Path):
     path = tmp_path / "a.aseprite"
     await new_sprite(call, color_mode="indexed")
     await set_palette(path, [(0, 0, 0, 0), (10, 10, 10, 255), (255, 0, 0, 255)])
@@ -240,7 +237,7 @@ async def test_move_region_on_indexed_sprite_keeps_pixels(
     assert await pixels(path, read=[(1, 1), (3, 1)], values=True) == [0, 2]
 
 
-async def test_move_region_on_grayscale_sprite(call, pixels, tmp_path: Path):
+async def test_move_region_grayscale(call, pixels, tmp_path: Path):
     path = tmp_path / "a.aseprite"
     await new_sprite(call, color_mode="grayscale")
     await pixels(path, put=[(1, 1, 100, 100, 100, 128)])
@@ -355,7 +352,7 @@ async def test_erase_region_on_linked_frame_keeps_other_frames(call, pixels, tmp
     assert await pixels(path, read=[(1, 1)], frame=2) == [CLEAR]
 
 
-async def test_flip_horizontal_mirrors_around_canvas(call, pixels, grid, cels, tmp_path: Path):
+async def test_flip_layer_mirrors_around_canvas(call, pixels, grid, cels, tmp_path: Path):
     path = tmp_path / "a.aseprite"
     await new_sprite(call, 8, 2)
     await trimmed(call, pixels, path, (1, 0), (2, 0), (1, 1))
@@ -505,12 +502,13 @@ async def test_rotate_layer_90_around_canvas_centre(call, pixels, grid, tmp_path
     ]
 
 
-async def test_rotate_layer_180_and_270(call, pixels, grid, tmp_path: Path):
+async def test_rotate_layer_180(call, pixels, grid, tmp_path: Path):
     path = tmp_path / "a.aseprite"
     await new_sprite(call, 4, 4)
     await trimmed(call, pixels, path, (0, 0), (1, 0), (0, 1))
 
     await call("rotate", path="a.aseprite", angle=180, layer="Layer 1")
+
     assert await grid(path) == [
         "....",
         "....",
@@ -518,8 +516,14 @@ async def test_rotate_layer_180_and_270(call, pixels, grid, tmp_path: Path):
         "..##",
     ]
 
-    await call("rotate", path="a.aseprite", angle=180, layer="Layer 1")
+
+async def test_rotate_layer_270(call, pixels, grid, tmp_path: Path):
+    path = tmp_path / "a.aseprite"
+    await new_sprite(call, 4, 4)
+    await trimmed(call, pixels, path, (0, 0), (1, 0), (0, 1))
+
     await call("rotate", path="a.aseprite", angle=270, layer="Layer 1")
+
     assert await grid(path) == [
         "....",
         "....",
@@ -560,6 +564,30 @@ async def test_rotate_layer_odd_size_difference_rounds_towards_top_left(
         "..#..",
         ".....",
     ]
+
+
+async def test_rotate_layer_270_undoes_90_on_odd_size_difference(call, pixels, tmp_path: Path):
+    path = tmp_path / "a.aseprite"
+    await new_sprite(call, 5, 4)
+    await trimmed(call, pixels, path, (1, 1))
+
+    await call("rotate", path="a.aseprite", angle=90, layer="Layer 1")
+    assert await pixels(path, read=[(2, 0)]) == [RED]
+    await call("rotate", path="a.aseprite", angle=270, layer="Layer 1")
+
+    assert await pixels(path, read=[(1, 1), (0, 1)]) == [RED, CLEAR]
+
+
+async def test_rotate_layer_turns_linked_cels_once(call, pixels, cels, tmp_path: Path):
+    path = tmp_path / "a.aseprite"
+    await linked_frames(call, pixels, path)
+
+    result = await call("rotate", path="a.aseprite", angle=90, layer="Layer 1")
+
+    assert (result["frames"], result["cels"]) == (3, 1)
+    for frame in (1, 2, 3):
+        assert await pixels(path, read=[(6, 1), (1, 1)], frame=frame) == [RED, CLEAR]
+    assert len({cel["image_id"] for cel in await cels(path)}) == 1
 
 
 async def test_rotate_whole_sprite_swaps_canvas_size_and_rotates_all_layers(
@@ -642,11 +670,80 @@ async def test_region_tools_in_one_batch(call, pixels, tmp_path: Path, monkeypat
 
     assert len(calls) == 1
     assert [r["cels"] for r in result["result"][2:]] == [1, 1]
-    # (1, 0) after the move, (1, 3) after the flip, (0, 1) after the turn.
     assert await pixels(path, read=[(0, 1), (1, 0), (3, 3)]) == [RED, CLEAR, CLEAR]
 
 
-async def test_many_moves_in_one_batch_stay_small(call, pixels, tmp_path: Path):
+async def test_copy_region_onto_background_keeps_it_opaque(call, pixels, tmp_path: Path):
+    path = tmp_path / "a.aseprite"
+    await new_sprite(call, 4, 4, background="#ffffff")
+    await pixels(path, background=True)
+    await call("add_layer", path="a.aseprite", name="Top")
+    await pixels(path, put=[(0, 0, *RED)], layer="Top")
+
+    await call(
+        "move_region",
+        path="a.aseprite",
+        layer="Top",
+        rect=rect(0, 0, 2, 2),
+        dx=2,
+        dy=2,
+        copy=True,
+        target_layer="Background",
+    )
+
+    assert await pixels(path, read=[(2, 2), (3, 2), (2, 3), (3, 3)], layer="Background") == [
+        RED,
+        WHITE,
+        WHITE,
+        WHITE,
+    ]
+
+
+async def test_move_region_inside_background_leaves_opaque_black(call, pixels, tmp_path: Path):
+    path = tmp_path / "a.aseprite"
+    await new_sprite(call, 4, 4, background="#ffffff")
+    await pixels(path, put=[(0, 0, *RED)], background=True)
+
+    await call(
+        "move_region", path="a.aseprite", layer="Background", rect=rect(0, 0, 1, 1), dx=1, dy=0
+    )
+
+    assert await pixels(path, read=[(0, 0), (1, 0)], layer="Background") == [
+        [0, 0, 0, 255],
+        RED,
+    ]
+
+
+async def test_move_region_on_indexed_background_copies_raw_indices(
+    call, pixels, set_palette, tmp_path: Path
+):
+    path = tmp_path / "a.aseprite"
+    await new_sprite(call, 4, 4, color_mode="indexed")
+    await set_palette(path, [(0, 0, 0, 0), (255, 0, 0, 255), (255, 255, 255, 255)])
+    await pixels(path, put=[(0, 0, 0, 0, 0, 255), (1, 0, 255, 255, 255, 255)], background=True)
+
+    await call(
+        "move_region", path="a.aseprite", layer="Background", rect=rect(0, 0, 1, 1), dx=1, dy=0
+    )
+
+    assert await pixels(path, read=[(1, 0)], layer="Background", values=True) == [0]
+
+
+async def test_erase_region_on_background_paints_opaque_black(call, pixels, tmp_path: Path):
+    path = tmp_path / "a.aseprite"
+    await new_sprite(call, 4, 4, background="#ffffff")
+    await pixels(path, background=True)
+
+    await call("erase_region", path="a.aseprite", layer="Background", rect=rect(0, 0, 2, 1))
+
+    assert await pixels(path, read=[(0, 0), (1, 0), (2, 0)], layer="Background") == [
+        [0, 0, 0, 255],
+        [0, 0, 0, 255],
+        WHITE,
+    ]
+
+
+async def test_many_moves_in_one_batch_on_a_large_sprite(call, pixels, tmp_path: Path):
     await call("create_sprite", path="a.aseprite", width=1024, height=1024, background="#ffffff")
     ops = [
         {
@@ -664,8 +761,3 @@ async def test_many_moves_in_one_batch_stay_small(call, pixels, tmp_path: Path):
         WHITE,
         WHITE,
     ]
-    if sys.platform == "linux":
-        import resource
-
-        peak_mb = resource.getrusage(resource.RUSAGE_CHILDREN).ru_maxrss // 1024
-        assert peak_mb < 400

@@ -44,8 +44,10 @@ def move_region(
     then the block is drawn at the destination, so overlapping moves work. Pixels whose
     destination is off the canvas are dropped and counted in clipped. With target_layer
     or target_frame the block lands there (the cel is created or grown as needed).
-    Indexed and grayscale pixel values are copied as they are. Linked cels get their
-    own copy first, so other frames never change.
+    Indexed and grayscale pixel values are copied as they are. A background layer
+    stays opaque: its cleared source turns black and a block from another layer is
+    blended onto it. Linked cels get their own copy first, so other frames never
+    change.
     """
     if dx == 0 and dy == 0 and target_layer is None and target_frame is None:
         raise ValueError("nothing to move: dx and dy are 0 and the target is the source")
@@ -66,6 +68,7 @@ def move_region(
 def erase_region(layer: LayerRef, rect: Rect, frames: FrameSpec = 1) -> dict[str, Any]:
     """Make the pixels of a layer inside rect transparent in each of the frames.
 
+    On the background layer, which cannot be transparent, they turn opaque black.
     Cel content beyond the canvas edge inside rect is erased too. Frames where the
     layer has no cel are skipped and counted. Linked cels in other frames keep their
     pixels.
@@ -85,7 +88,8 @@ def flip(
     cel's size and position, and cel content beyond the canvas edge is mirrored along.
     Without a layer every image layer is flipped, nested ones included; this is refused
     when any of them is locked or a tilemap. Linked cels are flipped once when all
-    their frames are in the list and get their own copy otherwise.
+    their frames are in the list and get their own copy otherwise. Slices are not
+    moved.
     """
     return {"axis": axis, "layer": layer, "frames": frames}
 
@@ -101,10 +105,10 @@ def rotate(
     Without a layer the canvas turns too (90 and 270 swap width and height) along with
     every layer in every frame; frames must then cover all frames. With a layer its
     cels turn about the canvas centre and the canvas keeps its size: on a non-square
-    canvas, content that ends up off the canvas stays in the cel. A 90/270 turn maps
-    pixel (x, y) to (ox + h - 1 - y, oy + x) / (ox + y, oy + w - 1 - x) with
-    ox = floor((w - h) / 2) and oy = floor((h - w) / 2), so an odd w - h rounds the
-    half pixel towards the top-left. A background layer turns by 90/270 only on a
-    square canvas.
+    canvas, content that ends up off the canvas stays in the cel. With
+    ox = floor((w - h) / 2) and oy = floor((h - w) / 2), 90 maps pixel (x, y) to
+    (ox + h - 1 - y, oy + x) and 270 maps it to (y - oy, oy + w - 1 - x): an odd w - h
+    rounds the half pixel of a 90 turn towards the top-left and 270 undoes 90 exactly.
+    A background layer turns by 90/270 only on a square canvas. Slices are not moved.
     """
     return {"angle": angle, "layer": layer, "frames": frames}

@@ -1,7 +1,8 @@
 -- Test helper: sets and reads pixels in one frame of the open sprite (frame 1 unless
 -- params.frame says otherwise), on the first layer or on the layer named by params.layer.
 -- params: set = {{x, y, r, g, b, a}, ...}, get = {{x, y}, ...}, layer = name or nil,
--- palette = {{r, g, b, a}, ...} to replace the palette before anything else.
+-- palette = {{r, g, b, a}, ...} to replace the palette before anything else,
+-- background = true to turn the layer into the background layer first.
 -- The result holds RGBA in `pixels`, the stored pixel values (e.g. indices) in `values`
 -- and the whole canvas as rows of '#' (painted) and '.' (transparent) in `grid`.
 
@@ -31,6 +32,13 @@ if #palette > 0 then
     pal:setColor(i - 1, Color { r = int(c[1]), g = int(c[2]), b = int(c[3]), a = int(c[4]) })
   end
   spr:setPalette(pal)
+end
+
+if P.background then
+  app.sprite = spr
+  app.layer = layer
+  app.command.BackgroundFromLayer()
+  layer = find_layer(spr, "Background")
 end
 
 local set = P.set or {}
@@ -75,7 +83,7 @@ for y = 0, spr.height - 1 do
 end
 
 local saved = false
-if (#set > 0 or #palette > 0) and P.save_tmp then
+if (#set > 0 or #palette > 0 or P.background) and P.save_tmp then
   spr:saveCopyAs(P.save_tmp)
   saved = true
 end

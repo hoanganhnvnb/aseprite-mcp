@@ -65,7 +65,8 @@ def pixels(ase_settings: Settings):
 
     Works on frame 1 of the first layer unless `frame` or `layer` say otherwise.
     With `values=True` it returns the stored pixel values (indices on indexed
-    sprites, -1 outside the cel) instead of RGBA.
+    sprites, -1 outside the cel) instead of RGBA. `background=True` first turns the
+    layer into the background layer (named "Background").
     """
 
     async def run(
@@ -75,17 +76,20 @@ def pixels(ase_settings: Settings):
         layer: str | None = None,
         frame: int = 1,
         values: bool = False,
+        background: bool = False,
     ) -> list:
         params = {"set": [list(p) for p in put], "get": [list(r) for r in read], "frame": frame}
         if layer is not None:
             params["layer"] = layer
+        if background:
+            params["background"] = True
         result = await run_script(
             PIXELS_SCRIPT,
             params,
             settings=ase_settings,
             lock_paths=[path],
             open_file=path,
-            save_to=path if put else None,
+            save_to=path if put or background else None,
         )
         return result.data["values" if values else "pixels"]
 

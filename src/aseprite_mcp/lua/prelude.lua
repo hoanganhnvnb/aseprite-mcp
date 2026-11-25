@@ -230,12 +230,15 @@ local function transparent_index(spr, layer)
   return spr.transparentColor
 end
 
--- `layer` is optional; pass it so indexed background layers are handled right.
--- Background layers cannot be transparent, so alpha is ignored there and every
--- colour maps to its nearest palette entry.
+-- `layer` is optional; pass it so background layers are handled right. Background
+-- layers cannot be transparent, so alpha is ignored there: RGB and gray store the
+-- colour opaque, indexed maps it to its nearest palette entry.
 function color_value(spr, rgba, layer)
   local r, g, b = rgba[1], rgba[2], rgba[3]
   local a = rgba[4] or 255
+  if layer ~= nil and layer.isBackground then
+    a = 255
+  end
   local mode = spr.colorMode
   if mode == ColorMode.RGB then
     return pc.rgba(r, g, b, a)

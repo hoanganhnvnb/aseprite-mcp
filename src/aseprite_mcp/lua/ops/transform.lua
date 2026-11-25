@@ -86,14 +86,14 @@ local function rotate_cel(spr, cel, angle)
     cel.position = Point(w - b.x - b.width, h - b.y - b.height)
     return
   end
-  -- The canvas rectangle turned about its centre starts at (ox, oy); when w - h is odd
-  -- the half pixel is rounded towards the top-left.
+  -- A quarter turn about the canvas centre. When w - h is odd the centre falls between
+  -- pixels: 90 rounds the half pixel towards the top-left and 270 is its exact inverse.
   local ox, oy = (w - h) // 2, (h - w) // 2
   local x, y
   if angle == 90 then
     x, y = ox + h - b.y - b.height, oy + b.x
   else
-    x, y = ox + b.y, oy + w - b.x - b.width
+    x, y = b.y - oy, oy + w - b.x - b.width
   end
   local image, offset = turned(spr, cel.image, angle)
   cel.image = image

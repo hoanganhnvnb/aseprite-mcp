@@ -52,8 +52,8 @@ def draw_pixels(
     Pixels outside the canvas are skipped and counted in skipped_outside. The cel grows
     to take in pixels outside it; content beyond the canvas is kept. Works on every
     colour mode: indexed sprites get the nearest palette entry, 'transparent' writes
-    the transparent index. On a background layer of an indexed sprite 'transparent'
-    becomes the nearest palette colour; RGB and grayscale store it as given.
+    the transparent index. A background layer stays opaque: alpha is ignored there, so
+    'transparent' paints opaque black (the nearest palette colour on indexed sprites).
     """
     return {
         **target(layer, frame, create_cel),

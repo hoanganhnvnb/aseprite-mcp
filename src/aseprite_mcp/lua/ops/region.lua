@@ -10,7 +10,8 @@ local function canvas_rect(spr, r)
   return area
 end
 
--- Clears the part of `area` (canvas coordinates) that lies inside the cel.
+-- Clears the part of `area` (canvas coordinates) that lies inside the cel. A
+-- background layer cannot be transparent and gets opaque black instead.
 local function clear_in_cel(spr, layer, cel, area)
   local hole = area:intersect(cel.bounds)
   if not hole.isEmpty then
@@ -77,7 +78,13 @@ OPS.move_region = function(ctx, p)
         Rectangle(shown.x + content.x, shown.y + content.y, content.width, content.height))
     end
     if target ~= nil then
-      local mode = p.blend and BlendMode.NORMAL or BlendMode.SRC
+      local mode = BlendMode.SRC
+      -- A background layer stays opaque, so a block from a normal layer is blended
+      -- onto it; a block from a background is opaque already and copied as is, which
+      -- also keeps indexed values that equal the transparent index.
+      if not layer.isBackground and (p.blend or to_layer.isBackground) then
+        mode = BlendMode.NORMAL
+      end
       target.image:drawImage(piece,
         Point(shown.x - target.position.x, shown.y - target.position.y), 255, mode)
     end
