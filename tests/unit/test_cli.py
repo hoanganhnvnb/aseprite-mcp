@@ -23,3 +23,13 @@ def test_cli_refuses_to_start_with_a_bad_setting(monkeypatch, capsys):
 
     assert main([]) == 2
     assert "ASEPRITE_MCP_SANDBOX='enabled' is not a yes/no value" in capsys.readouterr().err
+
+
+def test_cli_check_succeeds_with_a_working_binary(ase_settings, monkeypatch, capsys):
+    monkeypatch.setenv("ASEPRITE_PATH", str(ase_settings.aseprite))
+
+    assert main(["--check"]) == 0
+
+    out = capsys.readouterr().out
+    assert f"Aseprite: {ase_settings.aseprite}" in out
+    assert "Version:  1." in out
