@@ -3,7 +3,7 @@
 OPS = {}
 
 function fail(msg)
-  error({ user = msg }, 2)
+  error({ user = tostring(msg) }, 2)
 end
 
 BLEND_MODES = {

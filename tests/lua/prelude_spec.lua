@@ -195,6 +195,8 @@ local function run()
   check("frame error names value", type(frame_err) == "table" and frame_err.user:find('"2"', 1, true))
   local ok, err = pcall(fail, "nope")
   check("fail raises user error", not ok and type(err) == "table" and err.user == "nope")
+  local _, table_err = pcall(fail, { 1 })
+  check("fail turns a non-string message into a string", type(table_err.user) == "string")
 end
 
 local ok, err = xpcall(run, debug.traceback)
