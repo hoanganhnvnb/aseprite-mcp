@@ -59,12 +59,12 @@ More in [Getting started](docs/getting-started.md).
 
 ## Highlights
 
-| | |
+| Feature | What it gives you |
 |---|---|
 | **Batch** | `batch` runs many edits in one Aseprite process and saves once; if a step fails, nothing is saved. |
-| **Safe by default** | Edits go to a temporary file and replace the sprite only on success. An optional sandbox keeps every path inside one folder. |
+| **Safe saves** | Edits go to a temporary file and replace the sprite only on success. An optional sandbox keeps every path inside one folder. |
 | **Native image ops** | Colour adjustment, convolution, outlines and sprite sheets run on Aseprite's own filters and exporter. |
-| **Cross-platform** | Linux, macOS and Windows, CI on all three. |
+| **Cross-platform** | Linux, macOS and Windows; CI runs the unit tests on all three. |
 | **Preview** | `view_sprite` returns a PNG of any frames; `start_preview` serves exported GIFs on localhost. |
 | **Opt-in Lua** | `run_lua` exists only when you set `ASEPRITE_MCP_ALLOW_LUA=1`, and never in sandbox mode. |
 
@@ -94,18 +94,18 @@ palette presets `set_palette` accepts.
 
 ## Documentation
 
-- [Getting started](docs/getting-started.md): install, find Aseprite, client setup
-- [Concepts](docs/concepts.md): 1-based frames, colours, layer paths, locks, file formats
-- [Batch](docs/batch.md)
-- [Fonts](docs/fonts.md)
+- [Getting started](docs/getting-started.md): install, find Aseprite, client setup, first prompt
+- [Concepts](docs/concepts.md): 1-based frames, colours, layer paths, locks, file formats, limits
+- [Batch](docs/batch.md): many edits in one Aseprite run
+- [Fonts](docs/fonts.md): system fonts and Aseprite's pixel fonts
 - [Configuration](docs/configuration.md): every environment variable
-- [Security](docs/security.md)
-- [Troubleshooting](docs/troubleshooting.md)
-- [Tool reference](docs/tools.md)
+- [Security](docs/security.md): sandbox, `run_lua`, preview server, atomic saves
+- [Troubleshooting](docs/troubleshooting.md): error messages and fixes
+- [Tool reference](docs/tools.md): every tool with its parameters
 
 ## Fan art
 
-Showcase sprites are unofficial fan art, see `assets/NOTICE.md`. They are not covered by
+Showcase sprites are unofficial fan art, see [assets/NOTICE.md](assets/NOTICE.md). They are not covered by
 the MIT license. This project is not affiliated with Aseprite or its authors.
 
 ## Contributing

@@ -9,16 +9,17 @@
 
 ## Install
 
-Pick one. All three install from the GitHub repository.
+Pick one. All three use the GitHub repository. `uvx` runs the server on demand without
+a separate install step; `pipx` and `pip` install the `aseprite-mcp` command.
 
 ```sh
-# run on demand, nothing to install
+# uvx: fetch and run
 uvx --from git+https://github.com/hoanganhnvnb/aseprite-mcp aseprite-mcp --check
 
-# or install the command
+# pipx: install the command
 pipx install git+https://github.com/hoanganhnvnb/aseprite-mcp
 
-# or into a virtual environment
+# pip: into a virtual environment
 python -m venv .venv
 .venv/bin/pip install git+https://github.com/hoanganhnvnb/aseprite-mcp
 ```
@@ -54,7 +55,8 @@ holds a value the server cannot use. `aseprite-mcp --version` prints the server 
 
 Most MCP clients take a `mcpServers` block in their JSON settings.
 
-With `uvx` (Linux and macOS paths shown):
+**macOS**, with `uvx` (on Linux the same block works; use your own paths, such as
+`/usr/bin/aseprite`):
 
 ```json
 {
@@ -64,14 +66,14 @@ With `uvx` (Linux and macOS paths shown):
       "args": ["--from", "git+https://github.com/hoanganhnvnb/aseprite-mcp", "aseprite-mcp"],
       "env": {
         "ASEPRITE_PATH": "/Applications/Aseprite.app/Contents/MacOS/aseprite",
-        "ASEPRITE_MCP_ROOT": "/home/me/pixel-art"
+        "ASEPRITE_MCP_ROOT": "/Users/me/pixel-art"
       }
     }
   }
 }
 ```
 
-With `pipx` or `pip`, call the installed command and drop `args`:
+**Windows**, with `pipx` or `pip`: call the installed command and drop `args`:
 
 ```json
 {
