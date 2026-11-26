@@ -1,7 +1,7 @@
 import re
 from typing import Annotated, Literal
 
-from pydantic import AfterValidator, Field
+from pydantic import AfterValidator, Field, StrictInt
 
 # Far beyond any real animation; keeps "1-100000000" from building a huge list.
 MAX_FRAME = 65535
@@ -46,7 +46,7 @@ def parse_frames(spec: str | int, total: int | None = None) -> list[int] | Liter
 
 
 FrameSpec = Annotated[
-    str | int,
+    str | StrictInt,
     AfterValidator(parse_frames),
     Field(description='Frames: a number, "1-4", "1-4,7" or "all" (1-based)'),
 ]

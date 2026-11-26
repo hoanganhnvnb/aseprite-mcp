@@ -100,3 +100,13 @@ def test_frame_spec_schema_is_string_or_integer():
 
     assert {item["type"] for item in schema["anyOf"]} == {"string", "integer"}
     assert "1-4,7" in schema["description"]
+
+
+def test_frame_spec_rejects_a_bool():
+    with pytest.raises(ValidationError):
+        TypeAdapter(FrameSpec).validate_python(True)
+
+
+def test_frame_spec_rejects_a_float():
+    with pytest.raises(ValidationError):
+        TypeAdapter(FrameSpec).validate_python(2.0)
