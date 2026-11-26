@@ -89,8 +89,8 @@ OPS.update_layer = function(ctx, p)
       count = count + 1
     end
     if p.stack_index < 1 or p.stack_index > count then
-      fail(string.format("stack_index %d is out of range: %s holds %d layers",
-        p.stack_index, parent_label(spr, dest), count))
+      fail(string.format("stack_index %d is out of range: %s holds %s",
+        p.stack_index, parent_label(spr, dest), plural(count, "layer")))
     end
     if dest == spr and p.stack_index == 1 and spr.layers[1].isBackground
         and spr.layers[1] ~= layer then

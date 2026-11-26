@@ -100,3 +100,23 @@ def test_frame_spec_schema_is_string_or_integer():
 
     assert {item["type"] for item in schema["anyOf"]} == {"string", "integer"}
     assert "1-4,7" in schema["description"]
+
+
+def test_frame_spec_rejects_a_bool():
+    with pytest.raises(ValidationError):
+        TypeAdapter(FrameSpec).validate_python(True)
+
+
+def test_frame_spec_rejects_a_float():
+    with pytest.raises(ValidationError):
+        TypeAdapter(FrameSpec).validate_python(2.0)
+
+
+def test_parse_frames_says_1_frame_in_singular():
+    with pytest.raises(ValueError, match=r"sprite has 1 frame\)"):
+        parse_frames(2, total=1)
+
+
+def test_parse_frames_says_frames_in_plural():
+    with pytest.raises(ValueError, match=r"sprite has 3 frames\)"):
+        parse_frames(4, total=3)

@@ -168,6 +168,15 @@ def test_find_font_is_case_insensitive_and_offers_suggestions():
         find_font("Pixle Sans", entries)
 
 
+def test_find_font_matches_a_file_name_with_its_extension():
+    entries = [
+        entry("Pixel Sans", "Regular", "PixelSans.ttf"),
+        entry("Pixel Sans", "Bold", "PixelSans-Bold.ttf"),
+    ]
+
+    assert find_font("PixelSans-Bold.TTF", entries).style == "Bold"
+
+
 def test_find_font_by_path_respects_sandbox(tmp_path):
     real = some_font()
     root = tmp_path / "root"

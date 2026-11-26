@@ -9,7 +9,8 @@ local function cel_layer(spr, name)
     fail("'" .. path .. "' is a group; groups have no cels of their own")
   end
   if layer.isBackground then
-    fail("'" .. path .. "' is the background layer; its cels stay at 0,0 and fully opaque")
+    fail("'" .. path .. "' is the background layer; its cels always cover the canvas at 0,0, "
+      .. "so cel tools cannot move, clear or tween them. Draw on another layer instead")
   end
   require_editable(layer)
   return layer, path
@@ -134,11 +135,11 @@ local function anchored(bounds, w, h, anchor)
   if anchor == "top_left" then
     return Point(bounds.x, bounds.y)
   end
-  local x = round_half_away(bounds.x + (bounds.width - w) / 2)
+  local x = bounds.x + round_half_away((bounds.width - w) / 2)
   if anchor == "bottom" then
     return Point(x, bounds.y + bounds.height - h)
   end
-  return Point(x, round_half_away(bounds.y + (bounds.height - h) / 2))
+  return Point(x, bounds.y + round_half_away((bounds.height - h) / 2))
 end
 
 local function tween_scale(spr, layer, path, frames, steps, p)
@@ -147,8 +148,8 @@ local function tween_scale(spr, layer, path, frames, steps, p)
   end
   local source = p.source_frame or frames[1]
   if source > #spr.frames then
-    fail(string.format("source_frame %d is out of range (sprite has %d frames)",
-      source, #spr.frames))
+    fail(string.format("source_frame %d is out of range (sprite has %s)",
+      source, plural(#spr.frames, "frame")))
   end
   local src = layer:cel(source)
   if src == nil then

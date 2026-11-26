@@ -16,8 +16,8 @@ OPS.add_frames = function(ctx, p)
   local count = #spr.frames
   local after = p.after or count
   if after < 0 or after > count then
-    fail(string.format("after=%d is out of range: use 0 to %d (sprite has %d frames)",
-      after, count, count))
+    fail(string.format("after=%d is out of range: use 0 to %d (sprite has %s)",
+      after, count, plural(count, "frame")))
   end
   local created = {}
   for i = 1, p.count do
@@ -43,8 +43,8 @@ OPS.delete_frames = function(ctx, p)
   local spr = need_sprite(ctx)
   local frames = frame_list(spr, p.frames)
   if #frames >= #spr.frames then
-    fail(string.format("cannot delete all %d frames: a sprite needs at least one frame",
-      #spr.frames))
+    fail(string.format("cannot delete all %s: a sprite needs at least one frame",
+      plural(#spr.frames, "frame")))
   end
   for i = #frames, 1, -1 do
     spr:deleteFrame(frames[i])
@@ -73,10 +73,15 @@ local function copy_layers(spr, names)
   for _, name in ipairs(names) do
     local layer = get_layer(spr, name)
     if layer.isGroup then
+      local found = false
       for _, child in ipairs(all_layers(spr)) do
         if not child.isGroup and is_inside(spr, child, layer) then
           add(child)
+          found = true
         end
+      end
+      if not found then
+        fail("group '" .. layer_path(layer) .. "' has no layers to copy")
       end
     else
       add(layer)
@@ -89,7 +94,8 @@ OPS.copy_frames = function(ctx, p)
   local spr = need_sprite(ctx)
   local count = #spr.frames
   if p.source < 1 or p.source > count then
-    fail(string.format("source frame %d is out of range (sprite has %d frames)", p.source, count))
+    fail(string.format("source frame %d is out of range (sprite has %s)",
+      p.source, plural(count, "frame")))
   end
   local layers = copy_layers(spr, p.layers)
   -- Refuse before adding frames: a locked layer may only be passed over when the
@@ -160,7 +166,8 @@ OPS.set_tag = function(ctx, p)
   local count = #spr.frames
   for _, key in ipairs({ "from_frame", "to_frame" }) do
     if p[key] < 1 or p[key] > count then
-      fail(string.format("%s %d is out of range (sprite has %d frames)", key, p[key], count))
+      fail(string.format("%s %d is out of range (sprite has %s)",
+        key, p[key], plural(count, "frame")))
     end
   end
   if p.from_frame > p.to_frame then

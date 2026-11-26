@@ -460,3 +460,10 @@ async def test_flatten_sprite_ignores_locks(call, locks, tmp_path: Path):
     await call("flatten_sprite", path="a.aseprite")
 
     assert len(await layer_tree(call)) == 1
+
+
+async def test_update_layer_stack_index_error_says_1_layer_in_singular(call):
+    await setup(call, add("G", kind="group"), add("A", parent="G"))
+
+    with pytest.raises(ToolError, match="'G' holds 1 layer$"):
+        await call("update_layer", path="a.aseprite", layer="G/A", stack_index=2)

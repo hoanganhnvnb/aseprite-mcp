@@ -1,12 +1,16 @@
 import re
 from typing import Annotated, Literal
 
-from pydantic import AfterValidator, Field
+from pydantic import AfterValidator, Field, StrictInt
 
 # Far beyond any real animation; keeps "1-100000000" from building a huge list.
 MAX_FRAME = 65535
 
 _PART = re.compile(r"([0-9]+)(?:\s*-\s*([0-9]+))?")
+
+
+def _frames(count: int) -> str:
+    return f"{count} frame" if count == 1 else f"{count} frames"
 
 
 def _check(frame: int, total: int | None) -> int:
@@ -15,7 +19,7 @@ def _check(frame: int, total: int | None) -> int:
     if frame > MAX_FRAME:
         raise ValueError(f"frame {frame} is out of range: frame numbers stop at {MAX_FRAME}")
     if total is not None and frame > total:
-        raise ValueError(f"frame {frame} is out of range (sprite has {total} frames)")
+        raise ValueError(f"frame {frame} is out of range (sprite has {_frames(total)})")
     return frame
 
 
@@ -46,7 +50,7 @@ def parse_frames(spec: str | int, total: int | None = None) -> list[int] | Liter
 
 
 FrameSpec = Annotated[
-    str | int,
+    str | StrictInt,
     AfterValidator(parse_frames),
     Field(description='Frames: a number, "1-4", "1-4,7" or "all" (1-based)'),
 ]
