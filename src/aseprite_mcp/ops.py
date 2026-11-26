@@ -6,15 +6,7 @@ from pathlib import Path
 from typing import Any
 
 from .config import Settings
-from .errors import AsepriteError
-from .runner import (
-    LUA_DIR,
-    check_writable,
-    remove_temp_files,
-    replace_file,
-    run_script,
-    temp_sibling,
-)
+from .runner import LUA_DIR, run_script, temp_sibling
 
 MAIN_SCRIPT = LUA_DIR / "main.lua"
 OPS_DIR = LUA_DIR / "ops"
@@ -36,6 +28,9 @@ class Op:
     writes: list[tuple[Path, Path]] = field(default_factory=list)
     # Other sprites the op opens for reading; locked like the sprite for the run.
     reads: list[Path] = field(default_factory=list)
+    # With False, a written file that exists by the time it is moved into place
+    # (another call created it meanwhile) is refused rather than replaced.
+    overwrite: bool = True
 
 
 def output_file(final: Path) -> tuple[Path, Path]:
@@ -82,28 +77,19 @@ async def run_ops(
         "create": create,
         "target": str(path) if path is not None else None,
     }
-    lock_paths = [final for _, final in writes]
-    lock_paths += [source for op in ops for source in op.reads]
+    lock_paths = [source for op in ops for source in op.reads]
     if path is not None:
         lock_paths.append(path)
-    for _, final in writes:
-        check_writable(final)
-    try:
-        result = await run_script(
-            MAIN_SCRIPT,
-            params,
-            settings=settings,
-            lock_paths=lock_paths,
-            open_file=path if create is None else None,
-            save_to=path if saves else None,
-        )
-        for tmp, final in writes:
-            if not tmp.is_file():
-                raise AsepriteError(f"Aseprite could not write {final}")
-            replace_file(tmp, final)
-    finally:
-        for tmp, _ in writes:
-            remove_temp_files(tmp)
+    result = await run_script(
+        MAIN_SCRIPT,
+        params,
+        settings=settings,
+        lock_paths=lock_paths,
+        open_file=path if create is None else None,
+        save_to=path if saves else None,
+        writes=writes,
+        keep_existing=[final for op in ops if not op.overwrite for _, final in op.writes],
+    )
     # Aseprite's json.encode writes an empty table as [], so an op that returns
     # an empty object comes back as a list.
     return [r if r != [] else {} for r in result.data.get("results", [])]

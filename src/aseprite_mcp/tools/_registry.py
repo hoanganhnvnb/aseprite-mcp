@@ -145,7 +145,7 @@ def make_op(tool: str, params: dict[str, Any], path: Path, overwrite: bool = Fal
             raise ToolError(f"{key} must be a different file than the sprite itself")
         params[key] = str(source)
         reads.append(source)
-    return Op(op, params, mutates, label=tool, writes=writes, reads=reads)
+    return Op(op, params, mutates, label=tool, writes=writes, reads=reads, overwrite=overwrite)
 
 
 def op_result(tool: str, op: Op, result: dict[str, Any]) -> dict[str, Any]:

@@ -11,7 +11,7 @@ import pytest
 
 from aseprite_mcp.config import Settings
 from aseprite_mcp.errors import AsepriteError, ToolError
-from aseprite_mcp.runner import _lock_key, _taskkill, run_script
+from aseprite_mcp.runner import _lock_key, _taskkill, run_script, temp_sibling
 from helpers import make_settings
 
 FAKE = Path(__file__).parent.parent / "fake_aseprite.py"
@@ -221,6 +221,115 @@ async def test_read_only_target_is_refused(settings: Settings, tmp_path: Path):
 
     assert target.read_text() == "old"
     assert stat.S_IMODE(target.stat().st_mode) == 0o444
+
+
+async def test_outputs_are_published(settings: Settings, tmp_path: Path):
+    final = tmp_path / "copy.png"
+    tmp = temp_sibling(final)
+
+    await run_script(
+        SCRIPT,
+        {"fake": "ok", "write_files": [str(tmp)]},
+        settings=settings,
+        writes=[(tmp, final)],
+    )
+
+    assert final.read_text() == "new"
+    assert sorted(p.name for p in tmp_path.iterdir()) == ["bin", "copy.png"]
+
+
+async def test_missing_output_leaves_earlier_outputs_alone(settings: Settings, tmp_path: Path):
+    first, second = tmp_path / "a.png", tmp_path / "b.png"
+    first.write_text("old a")
+    second.write_text("old b")
+    first_tmp, second_tmp = temp_sibling(first), temp_sibling(second)
+
+    with pytest.raises(AsepriteError, match="could not write"):
+        await run_script(
+            SCRIPT,
+            {"fake": "ok", "write_files": [str(first_tmp)]},
+            settings=settings,
+            writes=[(first_tmp, first), (second_tmp, second)],
+        )
+
+    assert first.read_text() == "old a"
+    assert second.read_text() == "old b"
+    assert sorted(p.name for p in tmp_path.iterdir()) == ["a.png", "b.png", "bin"]
+
+
+async def test_missing_output_keeps_the_sprite(settings: Settings, tmp_path: Path):
+    target = tmp_path / "sprite.aseprite"
+    target.write_text("old")
+    output = tmp_path / "copy.png"
+
+    with pytest.raises(AsepriteError, match="could not write"):
+        await run_script(
+            SCRIPT,
+            {"fake": "ok", "write_save": "new"},
+            settings=settings,
+            save_to=target,
+            writes=[(temp_sibling(output), output)],
+        )
+
+    assert target.read_text() == "old"
+
+
+async def test_output_created_meanwhile_is_not_replaced(settings: Settings, tmp_path: Path):
+    final = tmp_path / "copy.png"
+    tmp = temp_sibling(final)
+    final.write_text("theirs")
+
+    with pytest.raises(ToolError, match="already exists"):
+        await run_script(
+            SCRIPT,
+            {"fake": "ok", "write_files": [str(tmp)]},
+            settings=settings,
+            writes=[(tmp, final)],
+            keep_existing=[final],
+        )
+
+    assert final.read_text() == "theirs"
+    assert sorted(p.name for p in tmp_path.iterdir()) == ["bin", "copy.png"]
+
+
+async def test_two_calls_cannot_both_create_one_output(settings: Settings, tmp_path: Path):
+    final = tmp_path / "copy.png"
+
+    async def create(text: str) -> None:
+        tmp = temp_sibling(final)
+        await run_script(
+            SCRIPT,
+            {"fake": "ok", "write_files": [str(tmp)], "file_text": text},
+            settings=settings,
+            writes=[(tmp, final)],
+            keep_existing=[final],
+        )
+
+    results = await asyncio.gather(create("one"), create("two"), return_exceptions=True)
+
+    failures = [r for r in results if isinstance(r, ToolError)]
+    assert len(failures) == 1
+    assert "already exists" in str(failures[0])
+    assert final.read_text() == ("one" if results[0] is None else "two")
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="POSIX permission bits")
+@pytest.mark.skipif(hasattr(os, "geteuid") and os.geteuid() == 0, reason="root can write anything")
+async def test_read_only_output_is_refused(settings: Settings, tmp_path: Path):
+    final = tmp_path / "copy.png"
+    final.write_text("old")
+    final.chmod(0o444)
+    tmp = temp_sibling(final)
+
+    with pytest.raises(ToolError, match="read-only"):
+        await run_script(
+            SCRIPT,
+            {"fake": "ok", "write_files": [str(tmp)]},
+            settings=settings,
+            writes=[(tmp, final)],
+        )
+
+    assert final.read_text() == "old"
 
 
 def test_lock_key_is_the_same_through_dot_dot(tmp_path: Path):

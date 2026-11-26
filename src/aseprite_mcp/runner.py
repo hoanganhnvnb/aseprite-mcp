@@ -9,7 +9,7 @@ import sys
 import tempfile
 import time
 import weakref
-from collections.abc import Sequence
+from collections.abc import Collection, Sequence
 from contextlib import AsyncExitStack
 from dataclasses import dataclass
 from pathlib import Path
@@ -181,7 +181,15 @@ async def run_script(
     lock_paths: Sequence[Path] = (),
     open_file: Path | None = None,
     save_to: Path | None = None,
+    writes: Sequence[tuple[Path, Path]] = (),
+    keep_existing: Collection[Path] = (),
 ) -> RunResult:
+    """Run a script under the file locks; `save_to` and `writes` are replaced only on success.
+
+    `writes` are (temporary, final) pairs the script writes besides the sprite. Every
+    file is put in place before the locks are released; a final path listed in
+    `keep_existing` that exists by then is refused instead of replaced.
+    """
     if settings.aseprite is None:
         raise AsepriteError(
             "Aseprite was not found. Install Aseprite (https://www.aseprite.org) and set "
@@ -192,7 +200,7 @@ async def run_script(
     semaphore = state.semaphores.setdefault(
         settings.max_procs, asyncio.Semaphore(settings.max_procs)
     )
-    keys = sorted({_lock_key(p) for p in lock_paths})
+    keys = sorted({_lock_key(p) for p in [*lock_paths, *(final for _, final in writes)]})
 
     async with AsyncExitStack() as stack:
         for key in keys:
@@ -200,7 +208,11 @@ async def run_script(
         await stack.enter_async_context(semaphore)
         if save_to is not None:
             check_writable(save_to)
-        return await _run_locked(script, params, settings, open_file, save_to)
+        for _, final in writes:
+            check_writable(final)
+        return await _run_locked(
+            script, params, settings, open_file, save_to, writes, set(keep_existing)
+        )
 
 
 async def _run_locked(
@@ -209,6 +221,8 @@ async def _run_locked(
     settings: Settings,
     open_file: Path | None,
     save_to: Path | None,
+    writes: Sequence[tuple[Path, Path]],
+    keep_existing: set[Path],
 ) -> RunResult:
     save_tmp = temp_sibling(save_to) if save_to is not None else None
     started = time.monotonic()
@@ -246,11 +260,23 @@ async def _run_locked(
                 str(data.get("error") or _tail(stderr) or "Aseprite reported failure")
             )
 
-        if save_to is not None and save_tmp is not None and data.get("saved"):
-            if not save_tmp.exists():
-                raise AsepriteError(f"Aseprite reported a save but {save_tmp.name} is missing")
+        saved = save_to is not None and save_tmp is not None and data.get("saved")
+        if saved and not save_tmp.exists():
+            raise AsepriteError(f"Aseprite reported a save but {save_tmp.name} is missing")
+        # Everything is checked before the first file is replaced, so a missing
+        # output leaves the sprite and the other outputs as they were.
+        for tmp, final in writes:
+            if not tmp.is_file():
+                raise AsepriteError(f"Aseprite could not write {final}")
+            if final in keep_existing and final.exists():
+                raise ToolError(f"{final} already exists; pass overwrite=true to replace it")
+        if saved:
             replace_file(save_tmp, save_to)
+        for tmp, final in writes:
+            replace_file(tmp, final)
         return RunResult(data, stdout, stderr, time.monotonic() - started)
     finally:
         if save_tmp is not None:
             remove_temp_files(save_tmp)
+        for tmp, _ in writes:
+            remove_temp_files(tmp)
