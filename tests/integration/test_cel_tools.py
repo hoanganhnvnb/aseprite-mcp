@@ -102,6 +102,14 @@ async def test_clear_cels_refuses_the_background_layer(call, pixels, tmp_path: P
         await call("clear_cels", path="a.aseprite", layer="Background", frames=1)
 
 
+async def test_set_cel_refuses_the_background_layer(call, pixels, tmp_path: Path):
+    await new_sprite(call, background="#ffffff")
+    await pixels(tmp_path / "a.aseprite", background=True)
+
+    with pytest.raises(ToolError, match="cel tools cannot move, clear or tween them"):
+        await call("set_cel", path="a.aseprite", layer="Background", frames=1, x=2)
+
+
 async def test_set_cel_unlinks_cels_outside_the_range(call, pixels, cels, tmp_path: Path):
     path = tmp_path / "a.aseprite"
     await new_sprite(call, frames=3)
@@ -234,6 +242,28 @@ async def test_tween_scale_doubles_cel_size_nearest_neighbour(call, pixels, cels
     assert (second["x"], second["y"], second["width"], second["height"]) == (4, 4, 4, 2)
     row = await pixels(path, read=[(4, 5), (5, 5), (6, 5), (7, 5)], frame=2)
     assert row == [RED, RED, BLUE, BLUE]
+
+
+async def test_tween_scale_bottom_anchor_keeps_the_bottom_edge(call, pixels, cels, tmp_path: Path):
+    path = tmp_path / "a.aseprite"
+    await new_sprite(call, frames=2)
+    await call("clear_cels", path="a.aseprite", layer="Layer 1", frames=1)
+    await pixels(path, put=[(4, 4, *RED), (5, 4, *BLUE)])
+
+    await call(
+        "tween_cels",
+        path="a.aseprite",
+        layer="Layer 1",
+        frames="1-2",
+        property="scale",
+        start=1,
+        end=2,
+        anchor="bottom",
+    )
+
+    first, second = await cels(path)
+    assert (first["x"], first["y"], first["width"], first["height"]) == (4, 4, 2, 1)
+    assert (second["x"], second["y"], second["width"], second["height"]) == (3, 3, 4, 2)
 
 
 async def test_tween_scale_center_anchor_keeps_center(call, pixels, cels, tmp_path: Path):
@@ -447,7 +477,7 @@ async def test_cel_tools_in_one_batch(call, pixels, cels, tmp_path: Path, monkey
             },
             {
                 "tool": "oscillate_cels",
-                "args": {"layer": "Layer 1", "frames": "2-3", "amplitude_x": 1},
+                "args": {"layer": "Layer 1", "frames": "1-3", "amplitude_x": 3},
             },
             {"tool": "clear_cels", "args": {"layer": "Layer 1", "frames": 3}},
         ],
@@ -456,7 +486,7 @@ async def test_cel_tools_in_one_batch(call, pixels, cels, tmp_path: Path, monkey
     assert len(calls) == 1
     first, second, third = await cels(path)
     assert (first["x"], first["opacity"]) == (0, 100)
-    assert (second["x"], second["y"]) == (2, 2)
+    assert (second["x"], second["y"]) == (3, 2)
     assert third is False
 
 
