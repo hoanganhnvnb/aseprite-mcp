@@ -342,6 +342,28 @@ async def test_draw_ellipse_zero_radius_is_one_pixel(call, grid, tmp_path: Path)
     assert await grid(tmp_path / "a.aseprite") == [".....", "...#.", "....."]
 
 
+async def test_draw_ellipse_with_zero_horizontal_radius_is_a_vertical_line(
+    call, grid, tmp_path: Path
+):
+    await new_sprite(call, 7, 5)
+
+    result = await call("draw_ellipse", path="a.aseprite", cx=3, cy=2, rx=0, ry=2, color="#ff0000")
+
+    assert result["painted"] == 5
+    assert await grid(tmp_path / "a.aseprite") == ["...#..."] * 5
+
+
+async def test_draw_ellipse_with_zero_vertical_radius_is_a_horizontal_line(
+    call, grid, tmp_path: Path
+):
+    await new_sprite(call, 7, 5)
+
+    result = await call("draw_ellipse", path="a.aseprite", cx=3, cy=2, rx=3, ry=0, color="#ff0000")
+
+    assert result["painted"] == 7
+    assert (await grid(tmp_path / "a.aseprite"))[2] == "#######"
+
+
 async def test_draw_ellipse_filled_has_no_holes(call, grid, tmp_path: Path):
     await new_sprite(call, 13, 9)
 
@@ -391,6 +413,46 @@ async def test_draw_circle_is_symmetric(call, grid, tmp_path: Path):
     assert rows == rows[::-1]
     assert rows == [row[::-1] for row in rows]
     assert rows == ["".join(col) for col in zip(*rows)]
+
+
+@pytest.mark.parametrize("radius", [6, 9, 14])
+async def test_draw_larger_circles_are_symmetric(call, grid, tmp_path: Path, radius: int):
+    size = 2 * radius + 1
+    await new_sprite(call, size, size)
+
+    await call(
+        "draw_ellipse",
+        path="a.aseprite",
+        cx=radius,
+        cy=radius,
+        rx=radius,
+        ry=radius,
+        color="#ff0000",
+    )
+
+    rows = await grid(tmp_path / "a.aseprite")
+    assert rows == rows[::-1]
+    assert rows == [row[::-1] for row in rows]
+    assert rows == ["".join(col) for col in zip(*rows)]
+
+
+async def test_draw_polygon_fills_between_horizontal_edges(call, grid, tmp_path: Path):
+    await new_sprite(call, 6, 5)
+
+    await call(
+        "draw_polygon",
+        path="a.aseprite",
+        points=pts((0, 0), (5, 0), (5, 2), (2, 2), (2, 4), (0, 4)),
+        color="#ff0000",
+    )
+
+    assert await grid(tmp_path / "a.aseprite") == [
+        "######",
+        "######",
+        "######",
+        "###...",
+        "###...",
+    ]
 
 
 async def test_draw_polygon_triangle_fill_count(call, grid, tmp_path: Path):
@@ -674,3 +736,59 @@ async def test_batch_rejects_string_coordinates(call, monkeypatch, tmp_path: Pat
         )
 
     assert (tmp_path / "a.aseprite").read_bytes() == before
+
+
+async def test_blend_on_indexed_sprite_snaps_to_the_nearest_palette_entry(
+    call, pixels, set_palette, tmp_path: Path
+):
+    path = tmp_path / "a.aseprite"
+    await new_sprite(call, color_mode="indexed")
+    await set_palette(path, [(0, 0, 0, 0), (0, 0, 0, 255), (255, 255, 255, 255)])
+    await call("draw_pixels", path="a.aseprite", pixels=[px(0, 0, "#000000")])
+
+    await call(
+        "draw_rect",
+        path="a.aseprite",
+        rect={"x": 0, "y": 0, "w": 1, "h": 1},
+        color="#ffffff40",
+        fill=True,
+        blend=True,
+    )
+
+    assert await pixels(path, read=[(0, 0)], values=True) == [1]
+
+
+async def test_faint_blend_on_an_empty_indexed_pixel_paints_a_solid_entry(
+    call, pixels, set_palette, tmp_path: Path
+):
+    path = tmp_path / "a.aseprite"
+    await new_sprite(call, color_mode="indexed")
+    await set_palette(path, [(0, 0, 0, 0), (0, 0, 0, 255), (255, 255, 255, 255)])
+
+    await call(
+        "draw_rect",
+        path="a.aseprite",
+        rect={"x": 1, "y": 0, "w": 1, "h": 1},
+        color="#ffffff10",
+        fill=True,
+        blend=True,
+    )
+
+    assert await pixels(path, read=[(1, 0)], values=True) == [2]
+
+
+async def test_blend_on_gray_sprite_mixes_over_gray_and_keeps_alpha(call, pixels, tmp_path: Path):
+    path = tmp_path / "a.aseprite"
+    await new_sprite(call, color_mode="grayscale")
+    await call("draw_pixels", path="a.aseprite", pixels=[px(0, 0, "#000000")])
+
+    await call(
+        "draw_rect",
+        path="a.aseprite",
+        rect={"x": 0, "y": 0, "w": 2, "h": 1},
+        color="#ffffff80",
+        fill=True,
+        blend=True,
+    )
+
+    assert await pixels(path, read=[(0, 0), (1, 0)]) == [[128, 128, 128, 255], [255, 255, 255, 128]]

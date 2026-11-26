@@ -453,3 +453,72 @@ async def test_copy_frames_rejects_a_bool_source(call):
 
     with pytest.raises(ToolError, match="source"):
         await call("copy_frames", path="a.aseprite", source=True, targets="2")
+
+
+async def test_copy_frames_replace_into_a_linked_target_leaves_its_linked_twin(
+    call, pixels, cels, tmp_path: Path
+):
+    path = tmp_path / "a.aseprite"
+    await new_sprite(call, frames=3)
+    await pixels(path, put=[(0, 0, *RED)], frame=1)
+    await pixels(path, put=[(1, 1, *BLUE)], frame=2)
+    await call("copy_frames", path="a.aseprite", source=2, targets="3", link=True)
+
+    await call("copy_frames", path="a.aseprite", source=1, targets="2")
+
+    _, second, third = await cels(path)
+    assert second["image_id"] != third["image_id"]
+    assert await pixels(path, read=[(0, 0), (1, 1)], frame=2) == [RED, CLEAR]
+    assert await pixels(path, read=[(0, 0), (1, 1)], frame=3) == [CLEAR, BLUE]
+
+
+async def test_set_tag_pingpong_reverse_round_trip(call):
+    await new_sprite(call, frames=3)
+
+    result = await call(
+        "set_tag",
+        path="a.aseprite",
+        name="bounce",
+        from_frame=1,
+        to_frame=3,
+        direction="pingpong_reverse",
+    )
+
+    assert result["direction"] == "pingpong_reverse"
+    info = await call("get_sprite_info", path="a.aseprite")
+    assert info["tags"][0]["direction"] == "pingpong_reverse"
+
+
+async def test_copy_frames_link_links_each_layer_on_its_own(call, pixels, cels, tmp_path: Path):
+    path = tmp_path / "a.aseprite"
+    await new_sprite(call, frames=3)
+    await call("add_layer", path="a.aseprite", name="Ink")
+    await pixels(path, put=[(0, 0, *RED)])
+    await pixels(path, put=[(1, 1, *BLUE)], layer="Ink")
+
+    await call("copy_frames", path="a.aseprite", source=1, targets="2-3", link=True)
+
+    assert len({cel["image_id"] for cel in await cels(path, layer="Layer 1")}) == 1
+    assert len({cel["image_id"] for cel in await cels(path, layer="Ink")}) == 1
+    assert await pixels(path, read=[(0, 0)], frame=3) == [RED]
+    assert await pixels(path, read=[(1, 1)], layer="Ink", frame=3) == [BLUE]
+
+
+async def test_add_frames_fills_a_background_layer_with_its_colour(call, pixels, tmp_path: Path):
+    path = tmp_path / "a.aseprite"
+    await new_sprite(call, 2, 2)
+    await pixels(path, put=[(0, 0, *RED)], background=True)
+
+    await call("add_frames", path="a.aseprite")
+
+    assert await pixels(path, read=[(0, 0)], frame=2) == [[0, 0, 0, 255]]
+
+
+async def test_add_frames_copy_content_copies_the_background_cel(call, pixels, tmp_path: Path):
+    path = tmp_path / "a.aseprite"
+    await new_sprite(call, 2, 2)
+    await pixels(path, put=[(0, 0, *RED)], background=True)
+
+    await call("add_frames", path="a.aseprite", copy_content=True)
+
+    assert await pixels(path, read=[(0, 0)], frame=2) == [RED]

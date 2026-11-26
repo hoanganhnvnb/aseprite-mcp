@@ -201,7 +201,8 @@ def adjust_colors(
     """Adjust the colours of a layer with Aseprite's filters; alpha is never changed.
 
     They run in this order: hue/saturation/lightness (HSL, as percentages), then
-    brightness/contrast, then invert.
+    brightness/contrast, then invert. Hue and saturation leave gray pixels (r = g = b)
+    unchanged.
 
     Every requested frame must have a cel. A filter removes a cel it leaves fully
     transparent, so a later op on that frame in the same batch finds no cel. Linked

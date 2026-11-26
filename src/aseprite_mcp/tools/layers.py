@@ -121,7 +121,8 @@ def merge_layer_down(layer: LayerRef) -> dict[str, Any]:
     """Merge a layer into the one below it in the same group, in every frame.
 
     Both must be image layers (not groups or tilemaps) and neither may be locked. The
-    layer is merged even when hidden. Returns the path of the merged layer.
+    layer is merged even when hidden. Both layers' opacity is baked into the pixels and
+    the merged layer is reset to opacity 255 and normal blend. Returns its path.
     """
     return {"layer": layer}
 

@@ -172,6 +172,22 @@ async def test_gradient_bayer_uses_only_the_two_neighbouring_colours(call, pixel
     assert set("".join(row[5:] for row in rows)) == {"g", "b"}
 
 
+async def test_gradient_bayer2_exact_pattern(call, pixels, tmp_path: Path):
+    await new_sprite(call, 6, 2)
+
+    await call(
+        "draw_gradient",
+        path="a.aseprite",
+        rect=rect(0, 0, 6, 2),
+        colors=["#000000", "#ffffff"],
+        dither="bayer2",
+    )
+
+    black, white = [0, 0, 0, 255], [255, 255, 255, 255]
+    rows = await picture(pixels, tmp_path / "a.aseprite", 6, 2, {"k": black, "w": white})
+    assert rows == ["kkwkww", "kkkwkw"]
+
+
 async def test_gradient_rejects_one_colour(call):
     await new_sprite(call)
 

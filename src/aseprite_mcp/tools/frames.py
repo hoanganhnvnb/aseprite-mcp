@@ -30,7 +30,8 @@ def add_frames(
 
     copy_content copies every layer's cel of the frame before the new ones (the old first
     frame when after=0) as independent cels. Without duration_ms the new frames take the
-    duration of that same frame.
+    duration of that same frame. On a background layer a new frame is filled with the
+    background colour (opaque black by default) unless copy_content copies it.
     """
     return {
         "count": count,
@@ -91,7 +92,8 @@ def copy_frames(
     fills targets where the layer has no cel yet. link=true makes the copies linked cels
     that share the source's image. The source frame itself is skipped if listed in
     targets. Frame durations are not copied. A locked layer (or one in a locked group)
-    that the copy would change is refused.
+    that the copy would change is refused. If a target comes before the source, link=true
+    cuts the source's existing links to frames not in targets.
 
     Example: {"path": "hero.aseprite", "source": 1, "targets": "append:3"}
     """
