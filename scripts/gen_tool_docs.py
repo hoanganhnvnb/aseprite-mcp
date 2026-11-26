@@ -1,0 +1,198 @@
+"""Write docs/tools.md from the tool registry.
+
+python scripts/gen_tool_docs.py           rewrite docs/tools.md
+python scripts/gen_tool_docs.py --check   exit 1 if docs/tools.md is out of date
+"""
+
+import argparse
+import asyncio
+import json
+import sys
+from pathlib import Path
+from typing import Any
+
+from mcp.server.fastmcp import FastMCP
+from mcp.types import Tool
+
+from aseprite_mcp.server import mcp
+from aseprite_mcp.tools import misc
+from aseprite_mcp.tools._registry import BATCHABLE
+
+OUTPUT = Path(__file__).resolve().parent.parent / "docs" / "tools.md"
+
+# module name -> (heading, one line about the group), in the order they are listed
+GROUPS: dict[str, tuple[str, str]] = {
+    "sprite": ("Sprite", "Create, inspect, convert, resize, crop and copy a sprite."),
+    "layers": ("Layers", "Layers, groups and tilemap layers."),
+    "frames": ("Frames and tags", "Frames, durations and animation tags."),
+    "cels": ("Cels", "Position, opacity and motion of a layer's cels."),
+    "draw": ("Drawing", "Shapes, fills, gradients, pixel art from text."),
+    "text": ("Text", "Fonts and text, including Aseprite's own pixel fonts."),
+    "region": ("Regions and transforms", "Move, erase, flip and rotate."),
+    "color": ("Colour", "Palettes and per-layer colour work."),
+    "read": ("Reading", "Look at a sprite without changing it."),
+    "quality": ("Animation checks", "Audit and repair animations, copy layers between sprites."),
+    "slices": ("Slices", "Named rectangles with 9-slice and pivot data."),
+    "tilemap": ("Tilemaps", "Tilemap layers and their tiles."),
+    "export": ("Export and import", "Images, sprite sheets, per-layer PNGs, import, preview."),
+    "misc": ("Other", "Batching, drawing guides and the opt-in Lua tool."),
+}
+
+TYPE_NAMES = {"integer": "int", "number": "number", "string": "string", "boolean": "bool"}
+
+
+def _cell(text: str) -> str:
+    return " ".join(text.split()).replace("|", "\\|")
+
+
+def _type(schema: dict[str, Any], defs: dict[str, Any]) -> str:
+    if "$ref" in schema:
+        name = schema["$ref"].rsplit("/", 1)[-1]
+        fields = ", ".join(defs.get(name, {}).get("properties", {}))
+        return f"{name} {{{fields}}}" if fields else name
+    if "anyOf" in schema:
+        parts = [_type(s, defs) for s in schema["anyOf"] if s.get("type") != "null"]
+        return " or ".join(parts)
+    if "enum" in schema:
+        return " / ".join(str(v) for v in schema["enum"])
+    kind = schema.get("type", "any")
+    if kind == "array" and "prefixItems" in schema:
+        bare = ("minimum", "maximum", "minLength", "description")
+        slots = [
+            _type({k: v for k, v in i.items() if k not in bare}, defs)
+            for i in schema["prefixItems"]
+        ]
+        return f"[{', '.join(slots)}]"
+    if kind == "array":
+        inner = _type(schema.get("items", {}), defs) if "items" in schema else "any"
+        text = f"{inner}[]"
+    elif kind == "object":
+        text = "object"
+    else:
+        text = TYPE_NAMES.get(kind, kind)
+    low, high = schema.get("minimum"), schema.get("maximum")
+    if low is not None and high is not None:
+        text += f" {low}..{high}"
+    elif low is not None:
+        text += f" >= {low}"
+    elif high is not None:
+        text += f" <= {high}"
+    lo, hi = schema.get("minItems"), schema.get("maxItems")
+    if lo is not None and hi is not None:
+        text += f" ({lo}..{hi} items)"
+    elif lo is not None:
+        text += f" (at least {lo})"
+    elif hi is not None:
+        text += f" (up to {hi})"
+    return text
+
+
+def _params(tool: Tool) -> list[str]:
+    schema = tool.inputSchema
+    required = set(schema.get("required", []))
+    defs = schema.get("$defs", {})
+    rows = ["| Parameter | Type | Default | Description |", "|---|---|---|---|"]
+    for name, spec in schema.get("properties", {}).items():
+        default = "required" if name in required else f"`{json.dumps(spec.get('default'))}`"
+        rows.append(
+            f"| `{name}` | {_cell(_type(spec, defs))} | {default} | "
+            f"{_cell(spec.get('description', ''))} |"
+        )
+    return rows
+
+
+def _tools() -> list[Tool]:
+    # Tests may register throwaway tools on the shared server; only the real ones count.
+    tools = [t for t in asyncio.run(mcp.list_tools()) if _is_ours(t.name)]
+    if all(t.name != "run_lua" for t in tools):
+        lua = FastMCP("docs")
+        lua.add_tool(misc.run_lua)
+        tools += asyncio.run(lua.list_tools())
+    return tools
+
+
+TOOLS_PACKAGE = "aseprite_mcp.tools."
+
+
+def _is_ours(name: str) -> bool:
+    return name == "run_lua" or mcp._tool_manager.get_tool(name).fn.__module__.startswith(
+        TOOLS_PACKAGE
+    )
+
+
+def _module(name: str) -> str:
+    if name == "run_lua":
+        return "misc"
+    return mcp._tool_manager.get_tool(name).fn.__module__.removeprefix(TOOLS_PACKAGE)
+
+
+def render() -> str:
+    tools = _tools()
+    by_group: dict[str, list[Tool]] = {key: [] for key in GROUPS}
+    for tool in tools:
+        by_group[_module(tool.name)].append(tool)
+
+    out = [
+        "<!-- Generated by scripts/gen_tool_docs.py from the tool registry. Do not edit by hand. -->",
+        "",
+        "# Tools",
+        "",
+        (
+            f"{len(tools)} tools ({len(tools) - 1} by default, plus `run_lua` when "
+            "`ASEPRITE_MCP_ALLOW_LUA=1`). This page is generated from the tool schemas, so it "
+            "matches what a client sees."
+        ),
+        "",
+        (
+            "- **batchable**: can be an op in a [`batch`](#batch) call, which runs several of "
+            "them in one Aseprite process. See [batch](batch.md)."
+        ),
+        "- **read-only**: never changes the sprite file.",
+        (
+            "- Tools that work on a sprite take `path` first; relative paths resolve against "
+            "`ASEPRITE_MCP_ROOT`. Inside `batch`, leave `path` out of `args`."
+        ),
+        "",
+        "| Group | Tools |",
+        "|---|---|",
+    ]
+    for key, (title, _) in GROUPS.items():
+        names = ", ".join(f"[`{t.name}`](#{t.name})" for t in by_group[key])
+        out.append(f"| [{title}](#{title.lower().replace(' ', '-')}) | {names} |")
+    out.append("")
+
+    for key, (title, blurb) in GROUPS.items():
+        out += [f"## {title}", "", blurb, ""]
+        for tool in by_group[key]:
+            marks = []
+            if tool.name in BATCHABLE:
+                marks.append("batchable")
+            if tool.annotations is not None and tool.annotations.readOnlyHint:
+                marks.append("read-only")
+            if tool.name == "run_lua":
+                marks.append("opt-in: needs `ASEPRITE_MCP_ALLOW_LUA=1`, never in sandbox mode")
+            summary = tool.description.strip().splitlines()[0]
+            out += [f"### `{tool.name}`", "", summary, ""]
+            if marks:
+                out += [" · ".join(marks), ""]
+            out += [*_params(tool), ""]
+    return "\n".join(out).rstrip() + "\n"
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(description="Generate docs/tools.md from the tool registry.")
+    parser.add_argument("--check", action="store_true", help="fail if docs/tools.md is stale")
+    args = parser.parse_args(argv)
+    text = render()
+    if args.check:
+        current = OUTPUT.read_text(encoding="utf-8") if OUTPUT.exists() else ""
+        if current != text:
+            print("docs/tools.md is out of date; run python scripts/gen_tool_docs.py")
+            return 1
+        return 0
+    OUTPUT.write_text(text, encoding="utf-8", newline="\n")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
