@@ -73,10 +73,15 @@ local function copy_layers(spr, names)
   for _, name in ipairs(names) do
     local layer = get_layer(spr, name)
     if layer.isGroup then
+      local found = false
       for _, child in ipairs(all_layers(spr)) do
         if not child.isGroup and is_inside(spr, child, layer) then
           add(child)
+          found = true
         end
+      end
+      if not found then
+        fail("group '" .. layer_path(layer) .. "' has no layers to copy")
       end
     else
       add(layer)

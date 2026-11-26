@@ -275,6 +275,17 @@ async def test_copy_frames_refuses_layer_in_locked_group(call, pixels, locks, tm
     assert await pixels(path, read=[(0, 0)], layer="G/C", frame=2) == [CLEAR]
 
 
+async def test_copy_frames_refuses_a_group_with_no_layers(call, tmp_path: Path):
+    await new_sprite(call, frames=2)
+    await call("add_layer", path="a.aseprite", name="G", kind="group")
+
+    with pytest.raises(ToolError, match="group 'G' has no layers to copy"):
+        await call("copy_frames", path="a.aseprite", source=1, targets="append:2", layers=["G"])
+
+    info = await call("get_sprite_info", path="a.aseprite")
+    assert len(info["frames"]) == 2
+
+
 async def test_copy_frames_refuses_locked_layer(call, pixels, locks, tmp_path: Path):
     path = tmp_path / "a.aseprite"
     await new_sprite(call, frames=2)
