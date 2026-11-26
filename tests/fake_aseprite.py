@@ -57,6 +57,10 @@ def main() -> int:
     if params.get("save_tmp") and params.get("write_save"):
         Path(params["save_tmp"]).write_text(params["write_save"])
         saved = True
+    if params.get("create_meanwhile"):
+        Path(params["create_meanwhile"]).write_text("theirs")
+    for name in params.get("write_files", []):
+        Path(name).write_text(params.get("file_text", "new"))
     result_path.write_text(json.dumps({"ok": True, "results": [], "saved": saved}))
     _log(params, "end")
     return 0

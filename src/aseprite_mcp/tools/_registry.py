@@ -1,6 +1,5 @@
 import functools
 import inspect
-import os
 import warnings
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -14,6 +13,7 @@ from .. import server
 from ..errors import ToolError, describe_invalid
 from ..ops import Op, output_file, run_ops
 from ..paths import check_save_extension, resolve_path, same_file
+from ..runner import lock_key
 
 Builder = Callable[..., dict[str, Any]]
 # Turns the op's raw result into the tool result; gets the result and the op params.
@@ -25,6 +25,10 @@ SpritePath = Annotated[
 ]
 
 READ_ONLY = ToolAnnotations(readOnlyHint=True)
+
+# Appended to tools that clients tend to call many times in a row; a batch of 50 small
+# draws takes about as long as one call, 50 separate calls take 30 times longer.
+BATCH_HINT = "Doing many of these in a row? Send them in one `batch` call on the same file; it is much faster than separate calls."
 
 # tool name -> (op name, mutates, builder)
 BATCHABLE: dict[str, tuple[str, bool, Builder]] = {}
@@ -61,6 +65,14 @@ def _args_model(name: str, signature: inspect.Signature) -> type[BaseModel]:
 _EXTRA: dict[str, _Extra] = {}
 
 
+def with_batch_hint(doc: str | None) -> str:
+    """The docstring with BATCH_HINT as its last paragraph, indented like the rest."""
+    lines = (doc or "").rstrip().splitlines()
+    indents = [len(line) - len(line.lstrip()) for line in lines[1:] if line.strip()]
+    indent = " " * min(indents, default=0)
+    return "\n".join(lines) + f"\n\n{indent}{BATCH_HINT}\n{indent}"
+
+
 def op_tool(
     op: str,
     *,
@@ -69,6 +81,7 @@ def op_tool(
     writes: str | None = None,
     reads: str | None = None,
     finish: Finisher | None = None,
+    batch_hint: bool = False,
 ) -> Callable[[Builder], Callable[..., Any]]:
     """Register a tool that maps to exactly one Lua op.
 
@@ -82,10 +95,14 @@ def op_tool(
     `reads` names a param holding another existing sprite the op opens; it is resolved
     the same way, must differ from the sprite, and is locked for the run.
     `finish` reshapes the op's result in Python, in direct calls and in batch alike.
+    `batch_hint` ends the tool description with BATCH_HINT; meant for mutating tools
+    that are often called many times in a row.
     """
 
     def register(builder: Builder) -> Callable[..., Any]:
         name = builder.__name__
+        if batch_hint and not mutates:
+            raise TypeError(f"{name}: batch_hint is only for mutating tools")
         signature = inspect.signature(builder, eval_str=True)
         if path_arg in signature.parameters:
             raise TypeError(f"{name}: '{path_arg}' is added by op_tool, do not declare it")
@@ -101,6 +118,8 @@ def op_tool(
         path_param = inspect.Parameter(
             path_arg, inspect.Parameter.POSITIONAL_OR_KEYWORD, annotation=SpritePath
         )
+        if batch_hint:
+            tool.__doc__ = with_batch_hint(builder.__doc__)
         tool.__signature__ = signature.replace(  # type: ignore[attr-defined]
             parameters=[path_param, *signature.parameters.values()],
             return_annotation=dict[str, Any],
@@ -145,7 +164,7 @@ def make_op(tool: str, params: dict[str, Any], path: Path, overwrite: bool = Fal
             raise ToolError(f"{key} must be a different file than the sprite itself")
         params[key] = str(source)
         reads.append(source)
-    return Op(op, params, mutates, label=tool, writes=writes, reads=reads)
+    return Op(op, params, mutates, label=tool, writes=writes, reads=reads, overwrite=overwrite)
 
 
 def op_result(tool: str, op: Op, result: dict[str, Any]) -> dict[str, Any]:
@@ -184,7 +203,7 @@ async def run_batch(path: Path, entries: list[tuple[str, dict[str, Any]]]) -> li
     seen: dict[str, int] = {}
     for i, op in enumerate(built, 1):
         for _, final in op.writes:
-            key = os.path.normcase(final)
+            key = lock_key(final)
             if key in seen:
                 first = seen[key]
                 raise ToolError(

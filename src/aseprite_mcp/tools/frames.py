@@ -92,6 +92,8 @@ def copy_frames(
     that share the source's image. The source frame itself is skipped if listed in
     targets. Frame durations are not copied. A locked layer (or one in a locked group)
     that the copy would change is refused.
+
+    Example: {"path": "hero.aseprite", "source": 1, "targets": "append:3"}
     """
     return {
         "source": source,

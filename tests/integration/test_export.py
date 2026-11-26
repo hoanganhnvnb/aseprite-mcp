@@ -1,7 +1,10 @@
 import dataclasses
+import errno
 import json
 import os
 import random
+import stat
+import sys
 from pathlib import Path
 
 import pytest
@@ -90,6 +93,72 @@ async def test_export_overwrite_replaces_output(call, tmp_path):
     await call("export", path="a.aseprite", output="a.png", overwrite=True)
 
     assert size(tmp_path / "a.png") == (4, 3)
+
+
+posix_modes = pytest.mark.skipif(sys.platform == "win32", reason="POSIX permission bits")
+not_root = pytest.mark.skipif(
+    hasattr(os, "geteuid") and os.geteuid() == 0, reason="root can write anything"
+)
+
+
+@posix_modes
+@not_root
+async def test_export_refuses_read_only_output(call, tmp_path):
+    await new_sprite(call)
+    target = tmp_path / "a.png"
+    target.write_bytes(b"old")
+    target.chmod(0o444)
+
+    with pytest.raises(ToolError, match="read-only"):
+        await call("export", path="a.aseprite", output="a.png", overwrite=True)
+
+    assert target.read_bytes() == b"old"
+    assert stat.S_IMODE(target.stat().st_mode) == 0o444
+
+
+@posix_modes
+async def test_export_overwrite_keeps_file_mode(call, tmp_path):
+    await new_sprite(call)
+    target = tmp_path / "a.png"
+    target.write_bytes(b"old")
+    target.chmod(0o640)
+
+    await call("export", path="a.aseprite", output="a.png", overwrite=True)
+
+    assert size(target) == (4, 3)
+    assert stat.S_IMODE(target.stat().st_mode) == 0o640
+
+
+@posix_modes
+@not_root
+async def test_export_numbered_files_refuse_a_read_only_one(call, tmp_path):
+    await new_sprite(call, frames=2)
+    (tmp_path / "w_1.png").write_bytes(b"one")
+    (tmp_path / "w_2.png").write_bytes(b"two")
+    (tmp_path / "w_2.png").chmod(0o444)
+
+    with pytest.raises(ToolError, match="read-only"):
+        await call("export", path="a.aseprite", output="w.png", frames="1-2", overwrite=True)
+
+    assert (tmp_path / "w_1.png").read_bytes() == b"one"
+    assert (tmp_path / "w_2.png").read_bytes() == b"two"
+    assert names(tmp_path) == ["a.aseprite", "w_1.png", "w_2.png"]
+
+
+@posix_modes
+@not_root
+async def test_export_layers_refuses_a_read_only_file(call, tmp_path):
+    await new_sprite(call)
+    parts = tmp_path / "parts"
+    parts.mkdir()
+    (parts / "Layer 1.png").write_bytes(b"old")
+    (parts / "Layer 1.png").chmod(0o444)
+
+    with pytest.raises(ToolError, match="read-only"):
+        await call("export_layers", path="a.aseprite", output_dir="parts", overwrite=True)
+
+    assert (parts / "Layer 1.png").read_bytes() == b"old"
+    assert stat.S_IMODE((parts / "Layer 1.png").stat().st_mode) == 0o444
 
 
 async def test_export_unknown_extension_lists_allowed(call):
@@ -336,12 +405,12 @@ async def test_failed_export_removes_the_files_it_wrote(call, tmp_path, monkeypa
     def failing_replace(src, dst):
         moves.append(dst)
         if len(moves) == 2:
-            raise OSError("disk full")
+            raise OSError(errno.ENOSPC, "No space left on device")
         real_replace(src, dst)
 
     monkeypatch.setattr(os, "replace", failing_replace)
 
-    with pytest.raises(ToolError, match="disk full"):
+    with pytest.raises(ToolError, match="No space left on device"):
         await call("export", path="a.aseprite", output="w.png", frames="all")
 
     assert names(tmp_path) == ["a.aseprite"]
@@ -768,11 +837,11 @@ async def test_failed_export_layers_removes_the_folder_it_made(call, tmp_path, m
     await new_sprite(call)
 
     def failing_replace(src, dst):
-        raise OSError("disk full")
+        raise OSError(errno.ENOSPC, "No space left on device")
 
     monkeypatch.setattr(os, "replace", failing_replace)
 
-    with pytest.raises(ToolError, match="disk full"):
+    with pytest.raises(ToolError, match="No space left on device"):
         await call("export_layers", path="a.aseprite", output_dir="new/parts")
 
     assert names(tmp_path) == ["a.aseprite"]
@@ -783,11 +852,11 @@ async def test_failed_export_layers_keeps_an_existing_folder(call, tmp_path, mon
     (tmp_path / "parts").mkdir()
 
     def failing_replace(src, dst):
-        raise OSError("disk full")
+        raise OSError(errno.ENOSPC, "No space left on device")
 
     monkeypatch.setattr(os, "replace", failing_replace)
 
-    with pytest.raises(ToolError, match="disk full"):
+    with pytest.raises(ToolError, match="No space left on device"):
         await call("export_layers", path="a.aseprite", output_dir="parts")
 
     assert (tmp_path / "parts").is_dir()

@@ -182,7 +182,7 @@ def measure_text(
     }
 
 
-@op_tool("draw_text", mutates=True)
+@op_tool("draw_text", mutates=True, batch_hint=True)
 def draw_text(
     text: Text,
     x: Annotated[Coord, Field(description="Canvas x of the anchor point")],
@@ -227,9 +227,13 @@ def draw_text(
     colour (partly transparent edges become opaque there, so keep antialias off).
     Pixels off the canvas are skipped and counted in skipped_outside. Text is at most
     2000 characters and 2048x2048 px. Colour emoji are not supported; characters the
-    font lacks show its fallback glyph, except in a bitmap font whose fallback is blank (Aseprite Mini), where such text is refused.
+    font lacks show its fallback glyph, except in a bitmap font whose fallback is
+    blank (Aseprite Mini), where such text is refused.
     Bitmap fonts (kind "bitmap" in list_fonts, e.g. "Aseprite") have a fixed height:
     size and antialias do not change them.
+
+    Example: {"path": "hero.aseprite", "text": "HP 3", "x": 1, "y": 1, "color": "#ffffff",
+    "size": 8, "shadow": "#000000"}
     """
     image = fonts.render_text(
         text,

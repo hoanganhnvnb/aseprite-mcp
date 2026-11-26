@@ -113,6 +113,8 @@ def set_palette(
     palette must stay large enough for every index in use, and the transparent index
     stays the same. Grayscale sprites are refused: Aseprite always gives them the 256
     grays, so convert to rgb or indexed with set_color_mode first.
+
+    Example: {"path": "hero.aseprite", "colors": ["#222034", "#d95763", "#fbf236", "transparent"]}
     """
     if (colors is None) == (preset is None):
         raise ValueError("pass exactly one of colors and preset")

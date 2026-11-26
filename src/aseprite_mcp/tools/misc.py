@@ -33,6 +33,10 @@ async def batch(
     The ops run in a single Aseprite process and are saved once at the end. If any op
     fails, nothing is saved and the error names the failing op. create_sprite and other
     multi-step tools are not accepted. One call takes at most 1000 ops by default.
+
+    Example: {"path": "hero.aseprite", "ops": [{"tool": "draw_rect", "args": {"rect":
+    {"x": 0, "y": 0, "w": 8, "h": 8}, "color": "#222034", "fill": true}}, {"tool":
+    "draw_line", "args": {"points": [{"x": 0, "y": 7}, {"x": 7, "y": 0}], "color": "#fbf236"}}]}
     """
     settings = server.get_settings()
     if len(ops) > settings.max_batch_ops:

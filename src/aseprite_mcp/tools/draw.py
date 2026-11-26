@@ -45,7 +45,7 @@ def points_list(points: list[Point]) -> list[list[int]]:
     return [[p.x, p.y] for p in points]
 
 
-@op_tool("draw_pixels", mutates=True)
+@op_tool("draw_pixels", mutates=True, batch_hint=True)
 def draw_pixels(
     pixels: Annotated[
         list[Pixel],
@@ -62,6 +62,9 @@ def draw_pixels(
     colour mode: indexed sprites get the nearest palette entry, 'transparent' writes
     the transparent index. A background layer stays opaque: alpha is ignored there, so
     'transparent' paints opaque black (the nearest palette colour on indexed sprites).
+
+    Example: {"path": "hero.aseprite", "pixels": [{"x": 2, "y": 3, "color": "#d95763"},
+    {"x": 3, "y": 3, "color": "transparent"}]}
     """
     return {
         **target(layer, frame, create_cel),
@@ -69,7 +72,7 @@ def draw_pixels(
     }
 
 
-@op_tool("draw_line", mutates=True)
+@op_tool("draw_line", mutates=True, batch_hint=True)
 def draw_line(
     points: Annotated[
         list[Point],
@@ -100,7 +103,7 @@ def draw_line(
     }
 
 
-@op_tool("draw_rect", mutates=True)
+@op_tool("draw_rect", mutates=True, batch_hint=True)
 def draw_rect(
     rect: Annotated[Rect, Field(description="Rectangle in canvas pixels")],
     color: Color,
@@ -116,6 +119,9 @@ def draw_rect(
     """Draw a rectangle outline (growing inwards with thickness) or a filled rectangle.
 
     Clipped to the canvas.
+
+    Example: {"path": "hero.aseprite", "rect": {"x": 4, "y": 4, "w": 8, "h": 6},
+    "color": "#3366ff", "fill": true}
     """
     return {
         **target(layer, frame, create_cel),
@@ -127,7 +133,7 @@ def draw_rect(
     }
 
 
-@op_tool("draw_ellipse", mutates=True)
+@op_tool("draw_ellipse", mutates=True, batch_hint=True)
 def draw_ellipse(
     cx: Annotated[Coord, Field(description="Centre x")],
     cy: Annotated[Coord, Field(description="Centre y")],
@@ -157,7 +163,7 @@ def draw_ellipse(
     }
 
 
-@op_tool("draw_polygon", mutates=True)
+@op_tool("draw_polygon", mutates=True, batch_hint=True)
 def draw_polygon(
     points: Annotated[
         list[Point],
@@ -184,7 +190,7 @@ def draw_polygon(
     }
 
 
-@op_tool("fill_area", mutates=True)
+@op_tool("fill_area", mutates=True, batch_hint=True)
 def fill_area(
     x: Annotated[Coord, Field(description="Seed pixel x")],
     y: Annotated[Coord, Field(description="Seed pixel y")],
@@ -222,7 +228,7 @@ Matrix = Annotated[
 ]
 
 
-@op_tool("draw_gradient", mutates=True)
+@op_tool("draw_gradient", mutates=True, batch_hint=True)
 def draw_gradient(
     rect: Area,
     colors: Annotated[
@@ -260,7 +266,7 @@ def draw_gradient(
     }
 
 
-@op_tool("fill_pattern", mutates=True)
+@op_tool("fill_pattern", mutates=True, batch_hint=True)
 def fill_pattern(
     rect: Area,
     color_a: Color,
@@ -307,7 +313,7 @@ def runs_op(
     }
 
 
-@op_tool("draw_runs", mutates=True)
+@op_tool("draw_runs", mutates=True, batch_hint=True)
 def draw_ascii(
     x: Left,
     y: Top,
@@ -334,6 +340,9 @@ def draw_ascii(
     below) a non-transparent art pixel that is not part of the art itself. Pixels off
     the canvas are skipped and counted in skipped_outside; painted counts art and
     outline pixels.
+
+    Example: {"path": "hero.aseprite", "x": 4, "y": 2, "rows": [".aa.", "abba", ".aa."],
+    "legend": {"a": "#222034", "b": "#d95763"}, "outline": "#000000"}
     """
     for key in legend:
         if len(key) != 1:
@@ -352,7 +361,7 @@ def draw_ascii(
     return runs_op(shapes, layer, frame, create_cel, blend)
 
 
-@op_tool("draw_runs", mutates=True)
+@op_tool("draw_runs", mutates=True, batch_hint=True)
 def draw_isometric_box(
     x: Annotated[Coord, Field(description="x of the top corner of the top face")],
     y: Annotated[Coord, Field(description="y of the top corner of the top face")],
