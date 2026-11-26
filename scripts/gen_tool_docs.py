@@ -56,6 +56,13 @@ def _type(schema: dict[str, Any], defs: dict[str, Any]) -> str:
     if "enum" in schema:
         return " / ".join(str(v) for v in schema["enum"])
     kind = schema.get("type", "any")
+    if kind == "array" and "prefixItems" in schema:
+        bare = ("minimum", "maximum", "minLength", "description")
+        slots = [
+            _type({k: v for k, v in i.items() if k not in bare}, defs)
+            for i in schema["prefixItems"]
+        ]
+        return f"[{', '.join(slots)}]"
     if kind == "array":
         inner = _type(schema.get("items", {}), defs) if "items" in schema else "any"
         text = f"{inner}[]"
@@ -96,7 +103,7 @@ def _params(tool: Tool) -> list[str]:
 
 def _tools() -> list[Tool]:
     # Tests may register throwaway tools on the shared server; only the real ones count.
-    tools = [t for t in asyncio.run(mcp.list_tools()) if _module(t.name) in GROUPS]
+    tools = [t for t in asyncio.run(mcp.list_tools()) if _is_ours(t.name)]
     if all(t.name != "run_lua" for t in tools):
         lua = FastMCP("docs")
         lua.add_tool(misc.run_lua)
@@ -104,11 +111,19 @@ def _tools() -> list[Tool]:
     return tools
 
 
+TOOLS_PACKAGE = "aseprite_mcp.tools."
+
+
+def _is_ours(name: str) -> bool:
+    return name == "run_lua" or mcp._tool_manager.get_tool(name).fn.__module__.startswith(
+        TOOLS_PACKAGE
+    )
+
+
 def _module(name: str) -> str:
     if name == "run_lua":
         return "misc"
-    module = mcp._tool_manager.get_tool(name).fn.__module__
-    return module.removeprefix("aseprite_mcp.tools.")
+    return mcp._tool_manager.get_tool(name).fn.__module__.removeprefix(TOOLS_PACKAGE)
 
 
 def render() -> str:

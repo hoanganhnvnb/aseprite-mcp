@@ -679,7 +679,7 @@ read-only
 | `base_color` | string | required | '#RRGGBB', '#RRGGBBAA' or 'transparent' |
 | `steps` | int 2..16 | `5` | Number of colours in the ramp |
 | `hue_shift` | number 0..60 | `0` | Degrees the hue turns per step away from the base |
-| `lightness_range` | any[] (2..2 items) | `[0.1, 0.9]` | Lightness (0..1) of the darkest and lightest step |
+| `lightness_range` | [number, number] | `[0.1, 0.9]` | Lightness (0..1) of the darkest and lightest step |
 
 ### `replace_colors`
 
@@ -870,7 +870,7 @@ batchable · read-only
 | `frames` | string or int | `"all"` | Frames: a number, "1-4", "1-4,7" or "all" (1-based) |
 | `required_layers` | string[] (up to 256) | `null` | Layers that must exist |
 | `layer_frame_ranges` | object | `null` | Layer name or path -> the frames it may have pixels in, e.g. {"Sword": "3-5"}; a group covers all its layers |
-| `overlap_pairs` | any[] (2..2 items)[] (up to 256) | `null` | Layer pairs whose pixels must not overlap |
+| `overlap_pairs` | [string, string][] (up to 256) | `null` | Layer pairs whose pixels must not overlap |
 
 ### `repair_animation`
 
