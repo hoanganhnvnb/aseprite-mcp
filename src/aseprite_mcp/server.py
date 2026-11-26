@@ -32,6 +32,8 @@ Conventions:
 - Work in .aseprite files. Other formats hold one flat layer with no tags or slices
   (.gif keeps frames), so edits they cannot store are refused.
 - Locked layers refuse pixel and cel edits; whole-sprite changes ignore locks.
+- Keep layer names unique and without '/': a repeated name finds the shallowest layer
+  with it, and a layer named 'x/y' shadows the path 'x/y' of a layer inside group 'x'.
 - Use `batch` to apply many edits to one file at once; nothing is saved if one fails.
 - Read-only tools (`get_sprite_info`, `read_pixels`, `view_sprite`...) never change
   the file and are safe to call any time.
