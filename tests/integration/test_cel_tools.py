@@ -94,6 +94,14 @@ async def test_set_cel_requires_a_change(call):
         await call("set_cel", path="a.aseprite", layer="Layer 1", frames=1, relative=True)
 
 
+async def test_clear_cels_refuses_the_background_layer(call, pixels, tmp_path: Path):
+    await new_sprite(call, background="#ffffff")
+    await pixels(tmp_path / "a.aseprite", background=True)
+
+    with pytest.raises(ToolError, match="cel tools cannot change its cels"):
+        await call("clear_cels", path="a.aseprite", layer="Background", frames=1)
+
+
 async def test_set_cel_unlinks_cels_outside_the_range(call, pixels, cels, tmp_path: Path):
     path = tmp_path / "a.aseprite"
     await new_sprite(call, frames=3)

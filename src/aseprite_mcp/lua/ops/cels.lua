@@ -9,7 +9,7 @@ local function cel_layer(spr, name)
     fail("'" .. path .. "' is a group; groups have no cels of their own")
   end
   if layer.isBackground then
-    fail("'" .. path .. "' is the background layer; its cels stay at 0,0 and fully opaque")
+    fail("'" .. path .. "' is the background layer; cel tools cannot change its cels")
   end
   require_editable(layer)
   return layer, path
