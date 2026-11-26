@@ -248,6 +248,29 @@ async def test_tween_scale_center_anchor_keeps_center(call, pixels, cels, tmp_pa
     assert (second["x"], second["y"], second["width"], second["height"]) == (3, 2, 4, 6)
 
 
+async def test_tween_scale_center_anchor_rounds_the_offset_not_the_position(
+    call, pixels, cels, tmp_path: Path
+):
+    path = tmp_path / "a.aseprite"
+    await new_sprite(call, frames=2)
+    await call("clear_cels", path="a.aseprite", layer="Layer 1", frames=1)
+    await pixels(path, put=[(0, 0, *RED), (3, 3, *RED)])
+    await call("set_cel", path="a.aseprite", layer="Layer 1", frames=1, x=-3)
+
+    await call(
+        "tween_cels",
+        path="a.aseprite",
+        layer="Layer 1",
+        frames="1-2",
+        property="scale",
+        start=1,
+        end=0.75,
+    )
+
+    second = (await cels(path))[1]
+    assert (second["x"], second["y"], second["width"], second["height"]) == (-2, 1, 3, 3)
+
+
 async def test_tween_scale_unlinks_shared_cels(call, pixels, cels, tmp_path: Path):
     path = tmp_path / "a.aseprite"
     await new_sprite(call, frames=3)
