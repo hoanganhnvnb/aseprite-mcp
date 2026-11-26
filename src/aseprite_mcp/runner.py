@@ -9,7 +9,7 @@ import sys
 import tempfile
 import time
 import weakref
-from collections.abc import Sequence
+from collections.abc import Collection, Sequence
 from contextlib import AsyncExitStack
 from dataclasses import dataclass
 from pathlib import Path
@@ -51,8 +51,10 @@ def _state() -> _LoopState:
     return state
 
 
-def _lock_key(path: Path) -> str:
-    return os.path.normcase(str(path.resolve()))
+def lock_key(path: Path) -> str:
+    key = os.path.normcase(str(path.resolve()))
+    # macOS file systems are case-insensitive by default; normcase leaves case there.
+    return key.casefold() if sys.platform == "darwin" else key
 
 
 def _tail(text: str) -> str:
@@ -77,7 +79,16 @@ def replace_file(tmp: Path, final: Path) -> None:
             os.chmod(tmp, stat.S_IMODE(final.stat().st_mode))
         except OSError:
             pass
-    os.replace(tmp, final)
+    try:
+        os.replace(tmp, final)
+    except OSError as e:
+        tmp.unlink(missing_ok=True)
+        reason = e.strerror or "the file could not be replaced"
+        raise ToolError(f"Could not write {final}: {reason}") from None
+
+
+def _exists(final: Path) -> ToolError:
+    return ToolError(f"{final} already exists; pass overwrite=true to replace it")
 
 
 def remove_temp_files(tmp: Path) -> None:
@@ -105,18 +116,22 @@ def _taskkill() -> str:
 
 async def _kill_tree(proc: asyncio.subprocess.Process) -> None:
     if sys.platform == "win32":
-        killer = await asyncio.create_subprocess_exec(
-            _taskkill(),
-            "/F",
-            "/T",
-            "/PID",
-            str(proc.pid),
-            stdin=subprocess.DEVNULL,
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-            creationflags=subprocess.CREATE_NO_WINDOW,
-        )
-        await killer.wait()
+        try:
+            killer = await asyncio.create_subprocess_exec(
+                _taskkill(),
+                "/F",
+                "/T",
+                "/PID",
+                str(proc.pid),
+                stdin=subprocess.DEVNULL,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                creationflags=subprocess.CREATE_NO_WINDOW,
+            )
+            await killer.wait()
+        except OSError:
+            # Without taskkill only the child itself is killed below.
+            pass
     else:
         try:
             os.killpg(proc.pid, signal.SIGKILL)
@@ -181,7 +196,15 @@ async def run_script(
     lock_paths: Sequence[Path] = (),
     open_file: Path | None = None,
     save_to: Path | None = None,
+    writes: Sequence[tuple[Path, Path]] = (),
+    keep_existing: Collection[Path] = (),
 ) -> RunResult:
+    """Run a script under the file locks; `save_to` and `writes` are replaced only on success.
+
+    `writes` are (temporary, final) pairs the script writes besides the sprite. Every
+    file is put in place before the locks are released; a final path listed in
+    `keep_existing` that exists by then is refused instead of replaced.
+    """
     if settings.aseprite is None:
         raise AsepriteError(
             "Aseprite was not found. Install Aseprite (https://www.aseprite.org) and set "
@@ -192,7 +215,8 @@ async def run_script(
     semaphore = state.semaphores.setdefault(
         settings.max_procs, asyncio.Semaphore(settings.max_procs)
     )
-    keys = sorted({_lock_key(p) for p in lock_paths})
+    keys = sorted({lock_key(p) for p in [*lock_paths, *(final for _, final in writes)]})
+    keep = set(keep_existing)
 
     async with AsyncExitStack() as stack:
         for key in keys:
@@ -200,7 +224,11 @@ async def run_script(
         await stack.enter_async_context(semaphore)
         if save_to is not None:
             check_writable(save_to)
-        return await _run_locked(script, params, settings, open_file, save_to)
+        for _, final in writes:
+            check_writable(final)
+            if final in keep and final.exists():
+                raise _exists(final)
+        return await _run_locked(script, params, settings, open_file, save_to, writes, keep)
 
 
 async def _run_locked(
@@ -209,6 +237,8 @@ async def _run_locked(
     settings: Settings,
     open_file: Path | None,
     save_to: Path | None,
+    writes: Sequence[tuple[Path, Path]],
+    keep_existing: set[Path],
 ) -> RunResult:
     save_tmp = temp_sibling(save_to) if save_to is not None else None
     started = time.monotonic()
@@ -241,16 +271,39 @@ async def _run_locked(
             if code != 0:
                 raise AsepriteError(f"Aseprite exited with code {code}: {detail}")
             raise AsepriteError(f"Aseprite finished without writing a result: {detail}")
+        # The script writes ok:true only after every op and the save are done, so a
+        # non-zero exit after that (Aseprite failing on shutdown) does not undo the run.
         if not data.get("ok", False):
             raise AsepriteError(
                 str(data.get("error") or _tail(stderr) or "Aseprite reported failure")
             )
 
-        if save_to is not None and save_tmp is not None and data.get("saved"):
-            if not save_tmp.exists():
-                raise AsepriteError(f"Aseprite reported a save but {save_tmp.name} is missing")
-            replace_file(save_tmp, save_to)
+        saved = save_to is not None and save_tmp is not None and data.get("saved")
+        if saved and not save_tmp.exists():
+            raise AsepriteError(f"Aseprite reported a save but {save_tmp.name} is missing")
+        # Everything is checked before the first file is replaced, so a missing
+        # output leaves the sprite and the other outputs as they were.
+        for tmp, final in writes:
+            if not tmp.is_file():
+                raise AsepriteError(f"Aseprite could not write {final}")
+            if final in keep_existing and final.exists():
+                raise _exists(final)
+        # Outputs go first: they are rendered again on every run, so if one cannot be
+        # replaced the sprite is still unsaved and the same call can simply be retried.
+        for tmp, final in writes:
+            replace_file(tmp, final)
+        if saved:
+            try:
+                replace_file(save_tmp, save_to)
+            except ToolError as e:
+                if not writes:
+                    raise
+                raise ToolError(
+                    f"{e}; the output files were written but the sprite was not saved"
+                ) from None
         return RunResult(data, stdout, stderr, time.monotonic() - started)
     finally:
         if save_tmp is not None:
             remove_temp_files(save_tmp)
+        for tmp, _ in writes:
+            remove_temp_files(tmp)

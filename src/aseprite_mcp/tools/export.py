@@ -19,7 +19,7 @@ from ..ops import run_op
 from ..paths import resolve_path, same_file
 from ..preview import preview
 from ..ranges import FrameSpec
-from ..runner import temp_sibling
+from ..runner import check_writable, replace_file, temp_sibling
 from ._registry import SpritePath
 from .layers import LayerRef
 from .sprite import MAX_CANVAS
@@ -64,6 +64,7 @@ def _check_target(final: Path, sprite: Path, overwrite: bool) -> None:
         raise ToolError(f"{final} is a folder")
     if final.exists() and not overwrite:
         raise ToolError(f"{final} already exists; pass overwrite=true to replace it")
+    check_writable(final)
 
 
 def _place(files: list[tuple[Path, Path]], sprite: Path, overwrite: bool) -> None:
@@ -84,7 +85,7 @@ def _place(files: list[tuple[Path, Path]], sprite: Path, overwrite: bool) -> Non
             shutil.copyfile(source, tmp)
         for tmp, final in staged:
             existed = final.exists()
-            os.replace(tmp, final)
+            replace_file(tmp, final)
             if not existed:
                 created.append(final)
     except BaseException:
