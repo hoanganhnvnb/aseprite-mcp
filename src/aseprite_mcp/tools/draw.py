@@ -341,7 +341,7 @@ def draw_ascii(
     is and cannot be legend keys. Keys are single characters (any Unicode character).
     Rows may differ in length. outline paints every pixel next to (left, right, above,
     below) a non-transparent art pixel that is not part of the art itself. It overwrites
-    pixels there unless blend is true, and ignores art pixels whose colour is transparent. Pixels off the canvas are skipped and counted in skipped_outside;
+    pixels there unless blend is true. Pixels off the canvas are skipped and counted in skipped_outside;
     painted counts art and outline pixels.
 
     Example: {"path": "hero.aseprite", "x": 4, "y": 2, "rows": [".aa.", "abba", ".aa."],
