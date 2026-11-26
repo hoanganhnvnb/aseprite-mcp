@@ -248,7 +248,7 @@ async def test_tween_scale_bottom_anchor_keeps_the_bottom_edge(call, pixels, cel
     path = tmp_path / "a.aseprite"
     await new_sprite(call, frames=2)
     await call("clear_cels", path="a.aseprite", layer="Layer 1", frames=1)
-    await pixels(path, put=[(4, 4, *RED), (5, 4, *BLUE)])
+    await pixels(path, put=[(4, 4, *RED), (5, 4, *BLUE), (4, 5, *RED), (5, 5, *BLUE)])
 
     await call(
         "tween_cels",
@@ -262,8 +262,8 @@ async def test_tween_scale_bottom_anchor_keeps_the_bottom_edge(call, pixels, cel
     )
 
     first, second = await cels(path)
-    assert (first["x"], first["y"], first["width"], first["height"]) == (4, 4, 2, 1)
-    assert (second["x"], second["y"], second["width"], second["height"]) == (3, 3, 4, 2)
+    assert (first["x"], first["y"], first["width"], first["height"]) == (4, 4, 2, 2)
+    assert (second["x"], second["y"], second["width"], second["height"]) == (3, 2, 4, 4)
 
 
 async def test_tween_scale_center_anchor_keeps_center(call, pixels, cels, tmp_path: Path):
