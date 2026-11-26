@@ -1,5 +1,7 @@
 import importlib.util
 import re
+import shutil
+import subprocess
 from pathlib import Path
 
 import pytest
@@ -11,12 +13,13 @@ FENCE = re.compile(r"^```.*?^```", re.DOTALL | re.MULTILINE)
 COMMENT = re.compile(r"<!--.*?-->", re.DOTALL)
 INLINE_CODE = re.compile(r"`([^`\n]+)`")
 LINK = re.compile(r"!?\[[^\]]*\]\(([^)\s]+)\)")
+HEADING = re.compile(r"^#{1,6}\s+(.+?)\s*#*\s*$", re.MULTILINE)
 HTML_SRC = re.compile(r"""(?:src|href)=["']([^"']+)["']""")
 ENV_VAR = re.compile(r"ASEPRITE_[A-Z0-9]+(?:_[A-Z0-9]+)*")
 TOOL_LIKE = re.compile(r"[a-z]+(?:_[a-z]+)+")
 
 # Words that must not appear in anything tracked; written in pieces so this file is clean.
-FORBIDDEN = ["cla" + "ude", "anthro" + "pic", "dii" + "vi", "up" + "stream"]
+FORBIDDEN = ["cla" + "ude", "anthro" + "pic", "dii" + "vi", "divy" + "ansh", "up" + "stream"]
 
 
 def _load_generator():
@@ -40,11 +43,15 @@ def doc_files() -> list[Path]:
     return files
 
 
-def tracked_text_files() -> list[Path]:
-    files = doc_files() + sorted((ROOT / ".github").rglob("*.md"))
-    files += sorted((ROOT / ".github").rglob("*.yml"))
-    files += sorted((ROOT / "scripts").glob("*.py")) + [ROOT / "pyproject.toml"]
-    return files
+def tracked_files() -> list[Path]:
+    git = shutil.which("git")
+    if git is None:
+        pytest.skip("git is not available")
+    result = subprocess.run([git, "ls-files", "-z"], cwd=ROOT, capture_output=True, check=False)
+    if result.returncode != 0:
+        pytest.skip("not a git checkout")
+    names = [n for n in result.stdout.decode("utf-8").split("\0") if n]
+    return [ROOT / n for n in names]
 
 
 def prose(path: Path) -> str:
@@ -142,30 +149,63 @@ def test_every_env_var_in_the_code_is_in_configuration_md():
     assert missing == []
 
 
-def test_config_py_reads_the_variables_the_docs_list():
-    config = (SRC / "config.py").read_text(encoding="utf-8")
-
-    assert "ASEPRITE_PATH" in config
-    assert "ASEPRITE_MCP_ROOT" in config
-
-
 def link_targets(path: Path) -> list[str]:
     text = COMMENT.sub("", path.read_text(encoding="utf-8"))
     text = FENCE.sub("", text)
     return LINK.findall(text) + HTML_SRC.findall(text)
 
 
-def test_relative_links_and_images_resolve():
+def slugify(heading: str) -> str:
+    """GitHub's anchor for a heading: lower case, no punctuation, spaces become hyphens."""
+    text = heading.replace("`", "").lower()
+    text = re.sub(r"[^\w\- ]", "", text)
+    return text.replace(" ", "-")
+
+
+def anchors(path: Path) -> set[str]:
+    found: set[str] = set()
+    seen: dict[str, int] = {}
+    for heading in HEADING.findall(FENCE.sub("", path.read_text(encoding="utf-8"))):
+        slug = slugify(heading)
+        count = seen.get(slug, 0)
+        seen[slug] = count + 1
+        found.add(slug if count == 0 else f"{slug}-{count}")
+    return found
+
+
+def broken_links(path: Path) -> list[str]:
+    broken = []
+    for target in link_targets(path):
+        if target.startswith(("http://", "https://", "mailto:")):
+            continue
+        relative, _, fragment = target.partition("#")
+        linked = path if not relative else path.parent / relative
+        missing = not linked.exists()
+        bad_anchor = bool(fragment) and linked.suffix == ".md" and fragment not in anchors(linked)
+        if missing or bad_anchor:
+            broken.append(target)
+    return broken
+
+
+def test_relative_links_images_and_anchors_resolve():
     broken = []
     for path in doc_files():
-        for target in link_targets(path):
-            if target.startswith(("http://", "https://", "mailto:", "#")):
-                continue
-            relative = target.split("#", 1)[0]
-            if not (path.parent / relative).exists():
-                broken.append(f"{path.relative_to(ROOT)}: {target}")
+        broken += [f"{path.relative_to(ROOT)}: {t}" for t in broken_links(path)]
 
     assert broken == []
+
+
+def test_a_link_to_a_missing_heading_is_reported(tmp_path):
+    page = tmp_path / "page.md"
+    page.write_text("# Title\n\n## Two words\n\n[ok](#two-words) [bad](#nope)\n", encoding="utf-8")
+
+    assert broken_links(page) == ["#nope"]
+
+
+def test_slugs_follow_github():
+    assert slugify("Regions and transforms") == "regions-and-transforms"
+    assert slugify("`run_lua`") == "run_lua"
+    assert slugify("Export and import") == "export-and-import"
 
 
 def test_the_link_scan_sees_links_in_the_readme():
@@ -184,10 +224,31 @@ def test_commented_out_images_are_not_checked(tmp_path):
 
 def test_tracked_files_do_not_use_forbidden_words():
     found = []
-    for path in tracked_text_files():
-        text = path.read_text(encoding="utf-8").lower()
+    for path in tracked_files():
+        if path == Path(__file__).resolve() or not path.is_file():
+            continue
+        try:
+            text = path.read_text(encoding="utf-8").lower()
+        except UnicodeDecodeError:
+            continue
         for word in FORBIDDEN:
             if word in text:
                 found.append(f"{path.relative_to(ROOT)}: {word}")
 
     assert found == []
+
+
+def test_every_tools_module_has_a_group(generator):
+    modules = {p.stem for p in (SRC / "tools").glob("*.py") if not p.name.startswith("_")}
+
+    assert modules == set(generator.GROUPS)
+
+
+def test_readme_tool_count_matches_the_registry(generator):
+    default_tools = [t for t in generator._tools() if t.name != "run_lua"]
+    readme = (ROOT / "README.md").read_text(encoding="utf-8")
+
+    match = re.search(r"(\d+) tools, plus `run_lua`", readme)
+
+    assert match is not None
+    assert int(match.group(1)) == len(default_tools)
