@@ -30,7 +30,8 @@ def add_frames(
 
     copy_content copies every layer's cel of the frame before the new ones (the old first
     frame when after=0) as independent cels. Without duration_ms the new frames take the
-    duration of that same frame. A background layer always gets an empty full-canvas cel.
+    duration of that same frame. On a background layer a new frame is filled with the
+    background colour (opaque black by default) unless copy_content copies it.
     """
     return {
         "count": count,

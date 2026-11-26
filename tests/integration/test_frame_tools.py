@@ -502,3 +502,23 @@ async def test_copy_frames_link_links_each_layer_on_its_own(call, pixels, cels, 
     assert len({cel["image_id"] for cel in await cels(path, layer="Ink")}) == 1
     assert await pixels(path, read=[(0, 0)], frame=3) == [RED]
     assert await pixels(path, read=[(1, 1)], layer="Ink", frame=3) == [BLUE]
+
+
+async def test_add_frames_fills_a_background_layer_with_its_colour(call, pixels, tmp_path: Path):
+    path = tmp_path / "a.aseprite"
+    await new_sprite(call, 2, 2)
+    await pixels(path, put=[(0, 0, *RED)], background=True)
+
+    await call("add_frames", path="a.aseprite")
+
+    assert await pixels(path, read=[(0, 0)], frame=2) == [[0, 0, 0, 255]]
+
+
+async def test_add_frames_copy_content_copies_the_background_cel(call, pixels, tmp_path: Path):
+    path = tmp_path / "a.aseprite"
+    await new_sprite(call, 2, 2)
+    await pixels(path, put=[(0, 0, *RED)], background=True)
+
+    await call("add_frames", path="a.aseprite", copy_content=True)
+
+    assert await pixels(path, read=[(0, 0)], frame=2) == [RED]
