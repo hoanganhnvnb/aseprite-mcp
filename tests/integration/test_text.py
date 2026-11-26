@@ -314,3 +314,53 @@ async def test_measure_text_treats_crlf_as_one_line_break(call):
 
     assert crlf == lf
     assert crlf["lines"] == 2
+
+
+async def aseprite_fonts(call) -> list[str]:
+    listed = await call("list_fonts", query="aseprite")
+    names = [f["name"] for f in listed["fonts"] if f["kind"] == "bitmap"]
+    if not names:
+        pytest.skip("this Aseprite installation has no data/fonts/fonts.xml")
+    return names
+
+
+async def test_list_fonts_includes_the_aseprite_pixel_fonts(call):
+    names = await aseprite_fonts(call)
+
+    assert {"Aseprite", "Aseprite Mini"} <= set(names)
+
+
+async def test_draw_text_with_the_aseprite_font_draws_its_glyph(call, grid, tmp_path: Path):
+    await aseprite_fonts(call)
+    await new_sprite(call, 7, 8)
+
+    result = await call(
+        "draw_text",
+        path="a.aseprite",
+        text="A",
+        x=1,
+        y=1,
+        color="#ff0000",
+        font="Aseprite",
+        size=99,
+    )
+
+    assert await grid(tmp_path / "a.aseprite") == [
+        ".......",
+        "..##...",
+        ".#..#..",
+        ".#..#..",
+        ".####..",
+        ".#..#..",
+        ".#..#..",
+        ".......",
+    ]
+    assert (result["width"], result["height"]) == (4, 6)
+
+
+async def test_measure_text_reports_the_aseprite_mini_line_height(call):
+    await aseprite_fonts(call)
+
+    size = await call("measure_text", text="Hi\nHi", font="Aseprite Mini", size=64)
+
+    assert (size["line_height"], size["height"]) == (5, 10)
