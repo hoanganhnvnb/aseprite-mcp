@@ -147,8 +147,8 @@ local function tween_scale(spr, layer, path, frames, steps, p)
   end
   local source = p.source_frame or frames[1]
   if source > #spr.frames then
-    fail(string.format("source_frame %d is out of range (sprite has %d frames)",
-      source, #spr.frames))
+    fail(string.format("source_frame %d is out of range (sprite has %s)",
+      source, plural(#spr.frames, "frame")))
   end
   local src = layer:cel(source)
   if src == nil then

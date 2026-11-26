@@ -6,6 +6,11 @@ function fail(msg)
   error({ user = tostring(msg) }, 2)
 end
 
+-- "1 frame", "3 frames".
+function plural(n, word)
+  return string.format("%d %s%s", n, word, n == 1 and "" or "s")
+end
+
 BLEND_MODES = {
   normal = BlendMode.NORMAL,
   multiply = BlendMode.MULTIPLY,
@@ -217,7 +222,7 @@ function frame_list(spr, spec)
       fail(string.format("frame %s is not a whole number", tostring(n)))
     end
     if n < 1 or n > count then
-      fail(string.format("frame %d is out of range (sprite has %d frames)", n, count))
+      fail(string.format("frame %d is out of range (sprite has %s)", n, plural(count, "frame")))
     end
     if not seen[n] then
       seen[n] = true

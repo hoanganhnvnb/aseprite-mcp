@@ -9,13 +9,17 @@ MAX_FRAME = 65535
 _PART = re.compile(r"([0-9]+)(?:\s*-\s*([0-9]+))?")
 
 
+def _frames(count: int) -> str:
+    return f"{count} frame" if count == 1 else f"{count} frames"
+
+
 def _check(frame: int, total: int | None) -> int:
     if frame < 1:
         raise ValueError(f"frame {frame} is out of range: frames start at 1")
     if frame > MAX_FRAME:
         raise ValueError(f"frame {frame} is out of range: frame numbers stop at {MAX_FRAME}")
     if total is not None and frame > total:
-        raise ValueError(f"frame {frame} is out of range (sprite has {total} frames)")
+        raise ValueError(f"frame {frame} is out of range (sprite has {_frames(total)})")
     return frame
 
 

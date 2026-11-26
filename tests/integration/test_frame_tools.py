@@ -104,6 +104,20 @@ async def test_delete_frames_removes_requested(call, pixels, tmp_path: Path):
     assert await pixels(path, read=[(0, 0)], frame=2) == [BLUE]
 
 
+async def test_delete_frames_refusal_says_1_frame_in_singular(call):
+    await new_sprite(call)
+
+    with pytest.raises(ToolError, match=r"cannot delete all 1 frame:"):
+        await call("delete_frames", path="a.aseprite", frames="all")
+
+
+async def test_set_frame_duration_out_of_range_says_1_frame_in_singular(call):
+    await new_sprite(call)
+
+    with pytest.raises(ToolError, match=r"sprite has 1 frame\)"):
+        await call("set_frame_duration", path="a.aseprite", frames=2, duration_ms=50)
+
+
 async def test_delete_frames_out_of_range_fails(call):
     await new_sprite(call, frames=2)
 
