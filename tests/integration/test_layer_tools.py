@@ -467,3 +467,123 @@ async def test_update_layer_stack_index_error_says_1_layer_in_singular(call):
 
     with pytest.raises(ToolError, match="'G' holds 1 layer$"):
         await call("update_layer", path="a.aseprite", layer="G/A", stack_index=2)
+
+
+async def test_background_layer_cannot_move_into_a_group(call, pixels, tmp_path: Path):
+    await setup(call, add("G", kind="group"))
+    await pixels(tmp_path / "a.aseprite", background=True)
+
+    with pytest.raises(ToolError, match="'Background' is the background layer and cannot be moved"):
+        await call("update_layer", path="a.aseprite", layer="Background", parent="G")
+
+
+async def test_background_layer_cannot_change_stack_index(call, pixels, tmp_path: Path):
+    await setup(call, add("Ink"))
+    await pixels(tmp_path / "a.aseprite", background=True)
+
+    with pytest.raises(ToolError, match="'Background' is the background layer and cannot be moved"):
+        await call("update_layer", path="a.aseprite", layer="Background", stack_index=2)
+
+    assert await layer_tree(call) == ["Background", "Ink"]
+
+
+async def test_background_layer_opacity_is_refused(call, pixels, tmp_path: Path):
+    await call("create_sprite", path="a.aseprite", width=8, height=8)
+    await pixels(tmp_path / "a.aseprite", background=True)
+
+    with pytest.raises(ToolError, match="its opacity and blend mode are fixed"):
+        await call("update_layer", path="a.aseprite", layer="Background", opacity=100)
+
+
+async def test_no_other_layer_can_take_stack_index_1_below_the_background(
+    call, pixels, tmp_path: Path
+):
+    await setup(call, add("Ink"))
+    await pixels(tmp_path / "a.aseprite", background=True)
+
+    with pytest.raises(ToolError, match="stack_index 1 at the top level belongs to the background"):
+        await call("update_layer", path="a.aseprite", layer="Ink", stack_index=1)
+
+    assert await layer_tree(call) == ["Background", "Ink"]
+
+
+async def test_duplicate_layer_keeps_blend_mode_and_visibility(call):
+    await call("create_sprite", path="a.aseprite", width=8, height=8)
+    await call(
+        "update_layer", path="a.aseprite", layer="Layer 1", blend_mode="multiply", visible=False
+    )
+
+    await call("duplicate_layer", path="a.aseprite", layer="Layer 1")
+
+    copy = (await call("get_sprite_info", path="a.aseprite"))["layers"][1]
+    assert (copy["name"], copy["blend_mode"], copy["visible"]) == (
+        "Layer 1 copy",
+        "multiply",
+        False,
+    )
+
+
+async def test_duplicate_layer_on_indexed_sprite_keeps_indices(
+    call, pixels, set_palette, tmp_path: Path
+):
+    path = tmp_path / "a.aseprite"
+    await call("create_sprite", path="a.aseprite", width=4, height=4, color_mode="indexed")
+    await set_palette(path, [(0, 0, 0, 0), (255, 0, 0, 255), (0, 0, 255, 255)])
+    await pixels(path, put=[(1, 1, *BLUE)])
+
+    await call("duplicate_layer", path="a.aseprite", layer="Layer 1")
+
+    read = [(1, 1), (0, 0)]
+    assert await pixels(path, read=read, layer="Layer 1 copy", values=True) == [2, 0]
+
+
+async def test_merge_layer_down_on_indexed_sprite_combines_indices(
+    call, pixels, set_palette, tmp_path: Path
+):
+    path = tmp_path / "a.aseprite"
+    await call("create_sprite", path="a.aseprite", width=4, height=4, color_mode="indexed")
+    await call("add_layer", path="a.aseprite", name="Top")
+    await set_palette(path, [(0, 0, 0, 0), (255, 0, 0, 255), (0, 0, 255, 255)])
+    await pixels(path, put=[(0, 0, *RED)])
+    await pixels(path, put=[(1, 1, *BLUE)], layer="Top")
+
+    await call("merge_layer_down", path="a.aseprite", layer="Top")
+
+    assert await pixels(path, read=[(0, 0), (1, 1), (0, 1)], values=True) == [1, 2, 0]
+
+
+async def test_duplicate_layer_on_gray_sprite_keeps_pixels(call, pixels, tmp_path: Path):
+    path = tmp_path / "a.aseprite"
+    await call("create_sprite", path="a.aseprite", width=4, height=4, color_mode="grayscale")
+    await pixels(path, put=[(1, 1, 90, 90, 90, 255)])
+
+    await call("duplicate_layer", path="a.aseprite", layer="Layer 1")
+
+    assert await pixels(path, read=[(1, 1)], layer="Layer 1 copy") == [[90, 90, 90, 255]]
+
+
+async def test_merge_layer_down_on_gray_sprite_combines_pixels(call, pixels, tmp_path: Path):
+    path = tmp_path / "a.aseprite"
+    await call("create_sprite", path="a.aseprite", width=4, height=4, color_mode="grayscale")
+    await call("add_layer", path="a.aseprite", name="Top")
+    await pixels(path, put=[(0, 0, 40, 40, 40, 255)])
+    await pixels(path, put=[(1, 1, 200, 200, 200, 255)], layer="Top")
+
+    await call("merge_layer_down", path="a.aseprite", layer="Top")
+
+    assert await pixels(path, read=[(0, 0), (1, 1)]) == [[40, 40, 40, 255], [200, 200, 200, 255]]
+
+
+async def test_flatten_sprite_keeps_every_frame(call, pixels, tmp_path: Path):
+    path = tmp_path / "a.aseprite"
+    await setup(call, add("Top"))
+    await call("add_frames", path="a.aseprite", count=1)
+    await pixels(path, put=[(0, 0, *RED)], frame=1)
+    await pixels(path, put=[(1, 1, *BLUE)], layer="Top", frame=2)
+
+    await call("flatten_sprite", path="a.aseprite")
+
+    info = await call("get_sprite_info", path="a.aseprite")
+    assert len(info["frames"]) == 2
+    assert await pixels(path, read=[(0, 0), (1, 1)], frame=1) == [RED, CLEAR]
+    assert await pixels(path, read=[(0, 0), (1, 1)], frame=2) == [CLEAR, BLUE]
