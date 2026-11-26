@@ -9,7 +9,8 @@ local function cel_layer(spr, name)
     fail("'" .. path .. "' is a group; groups have no cels of their own")
   end
   if layer.isBackground then
-    fail("'" .. path .. "' is the background layer; cel tools cannot change its cels")
+    fail("'" .. path .. "' is the background layer; its cels always cover the canvas at 0,0, "
+      .. "so cel tools cannot move, clear or tween them. Draw on another layer instead")
   end
   require_editable(layer)
   return layer, path

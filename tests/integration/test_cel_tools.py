@@ -98,7 +98,7 @@ async def test_clear_cels_refuses_the_background_layer(call, pixels, tmp_path: P
     await new_sprite(call, background="#ffffff")
     await pixels(tmp_path / "a.aseprite", background=True)
 
-    with pytest.raises(ToolError, match="cel tools cannot change its cels"):
+    with pytest.raises(ToolError, match="cel tools cannot move, clear or tween them"):
         await call("clear_cels", path="a.aseprite", layer="Background", frames=1)
 
 
