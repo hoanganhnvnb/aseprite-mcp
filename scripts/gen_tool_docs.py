@@ -95,7 +95,8 @@ def _params(tool: Tool) -> list[str]:
 
 
 def _tools() -> list[Tool]:
-    tools = list(asyncio.run(mcp.list_tools()))
+    # Tests may register throwaway tools on the shared server; only the real ones count.
+    tools = [t for t in asyncio.run(mcp.list_tools()) if _module(t.name) in GROUPS]
     if all(t.name != "run_lua" for t in tools):
         lua = FastMCP("docs")
         lua.add_tool(misc.run_lua)
@@ -106,7 +107,8 @@ def _tools() -> list[Tool]:
 def _module(name: str) -> str:
     if name == "run_lua":
         return "misc"
-    return mcp._tool_manager.get_tool(name).fn.__module__.rsplit(".", 1)[-1]
+    module = mcp._tool_manager.get_tool(name).fn.__module__
+    return module.removeprefix("aseprite_mcp.tools.")
 
 
 def render() -> str:
