@@ -82,31 +82,37 @@ def test_tools_reference_marks_batchable_and_read_only_tools():
     assert "batchable" not in create
 
 
-def test_backticked_tool_names_exist(generator):
+def known_names(generator) -> set[str]:
+    """Tool names plus parameter names, which are snake_case too."""
     tools = generator._tools()
-    names = {tool.name for tool in tools}
-    # Parameter names are snake_case too, so they are not tool names.
-    params: set[str] = set()
+    names = {tool.name for tool in tools} | {"aseprite_mcp"}
     for tool in tools:
-        params.update(tool.inputSchema.get("properties", {}))
+        names.update(tool.inputSchema.get("properties", {}))
         for definition in tool.inputSchema.get("$defs", {}).values():
-            params.update(definition.get("properties", {}))
-    other = {"aseprite_mcp"}
+            names.update(definition.get("properties", {}))
+    return names
+
+
+def unknown_tool_names(text: str, known: set[str]) -> list[str]:
+    return [t for t in INLINE_CODE.findall(text) if TOOL_LIKE.fullmatch(t) and t not in known]
+
+
+def test_backticked_tool_names_exist(generator):
+    known = known_names(generator)
 
     unknown = []
     for path in doc_files():
-        for token in INLINE_CODE.findall(prose(path)):
-            if TOOL_LIKE.fullmatch(token) and token not in names | params | other:
-                unknown.append(f"{path.relative_to(ROOT)}: {token}")
+        unknown += [
+            f"{path.relative_to(ROOT)}: {t}" for t in unknown_tool_names(prose(path), known)
+        ]
 
     assert unknown == []
 
 
-def test_a_made_up_tool_name_is_caught(generator):
-    names = {tool.name for tool in generator._tools()}
+def test_a_made_up_tool_name_is_reported(generator):
+    known = known_names(generator)
 
-    assert "draw_circle" not in names
-    assert TOOL_LIKE.fullmatch("draw_circle")
+    assert unknown_tool_names("Use `draw_circle` or `draw_rect`.", known) == ["draw_circle"]
 
 
 def source_env_vars() -> set[str]:
