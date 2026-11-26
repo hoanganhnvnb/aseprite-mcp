@@ -280,3 +280,37 @@ async def test_font_dirs_setting_with_fonts_xml_adds_bitmap_fonts(tmp_path, monk
         ("Tiny Pixel", "bitmap", 4)
     ]
     assert (size["width"], size["height"], size["line_height"]) == (7, 4, 4)
+
+
+def test_text_with_a_character_the_sheet_lacks_is_refused_when_the_fallback_is_blank(tmp_path):
+    blank = {**GLYPHS, "\x80": ["....", "....", "....", "...."]}
+    make_sheet(tmp_path / "s.png", blank)
+
+    with pytest.raises(ToolError, match="no glyph for: C"):
+        render_text("ACB", load_sheet(tmp_path / "s.png"), RED)
+
+
+def test_a_sheet_with_too_many_glyphs_is_refused(tmp_path, monkeypatch):
+    make_sheet(tmp_path / "s.png")
+    monkeypatch.setattr(sheet_fonts, "MAX_GLYPHS", 10)
+
+    with pytest.raises(ValueError, match="more than"):
+        load_sheet(tmp_path / "s.png")
+
+
+def test_a_gif_named_png_is_not_read_as_a_sheet(tmp_path):
+    Image.new("RGBA", (4, 4), KEY).save(tmp_path / "s.png", format="GIF")
+
+    with pytest.raises(OSError):
+        load_sheet(tmp_path / "s.png")
+
+
+def test_fonts_xml_names_with_a_backslash_or_drive_are_refused(tmp_path):
+    folder = font_folder(tmp_path)
+    write_xml(
+        folder,
+        '<font name="A" type="spritesheet" file="..\\tiny.png" />'
+        '<font name="B" type="spritesheet" file="C:tiny.png" />',
+    )
+
+    assert read_fonts_xml(folder) == []

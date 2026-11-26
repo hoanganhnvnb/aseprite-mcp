@@ -26,6 +26,7 @@ FALLBACK_CODE = 128
 MISSING_MARK = (255, 0, 0, 255)
 MAX_XML_BYTES = 256 * 1024
 MAX_SHEET_PIXELS = 2048 * 2048
+MAX_GLYPHS = 65536
 Stamp = tuple[int, int]
 
 
@@ -41,6 +42,14 @@ class SheetFont:
             return None
         found = self.glyphs.get(code)
         return found if found is not None else self.glyphs.get(FALLBACK_CODE)
+
+    def lacks(self, char: str) -> bool:
+        """True if the font cannot show char: no glyph, and a blank fallback glyph."""
+        code = ord(char)
+        if 10 <= code <= 20 or code in self.glyphs:
+            return False
+        fallback = self.glyphs.get(FALLBACK_CODE)
+        return fallback is None or fallback.getbbox() is None
 
     def getlength(self, text: str) -> int:
         return sum(g.width for g in map(self.glyph, text) if g is not None)
@@ -74,6 +83,8 @@ def _boxes(image: Image.Image) -> list[tuple[int, int, int, int] | None]:
         h = 1
         while y + h < height and px[x, y + h] != key:
             h += 1
+        if len(boxes) >= MAX_GLYPHS:
+            raise ValueError(f"the sheet has more than {MAX_GLYPHS} glyphs")
         boxes.append(None if px[x, y] == MISSING_MARK else (x, y, x + w, y + h))
         x += w
         step = h
@@ -81,7 +92,7 @@ def _boxes(image: Image.Image) -> list[tuple[int, int, int, int] | None]:
 
 def _read_sheet(path: Path) -> SheetFont:
     try:
-        with Image.open(path) as image:
+        with Image.open(path, formats=["PNG"]) as image:
             if image.width * image.height > MAX_SHEET_PIXELS:
                 raise ValueError(f"{path.name} is larger than {MAX_SHEET_PIXELS} pixels")
             rgba = image.convert("RGBA")
@@ -179,7 +190,12 @@ def read_fonts_xml(folder: Path) -> list[tuple[str, Path]]:
             return []
         cached = (stamp, _parse(folder, data))
         _xml[xml] = cached
-    return [(name, path) for name, path in cached[1] if path.is_file()]
+    root = folder.resolve()
+    return [
+        (name, path)
+        for name, path in cached[1]
+        if path.is_file() and _inside(root, path.relative_to(root).as_posix())
+    ]
 
 
 def install_dirs(exe: str | None, platform: str) -> list[Path]:

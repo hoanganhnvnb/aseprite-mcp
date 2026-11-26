@@ -227,7 +227,7 @@ def draw_text(
     colour (partly transparent edges become opaque there, so keep antialias off).
     Pixels off the canvas are skipped and counted in skipped_outside. Text is at most
     2000 characters and 2048x2048 px. Colour emoji are not supported; characters the
-    font lacks show its fallback glyph.
+    font lacks show its fallback glyph, except in a bitmap font whose fallback is blank (Aseprite Mini), where such text is refused.
     Bitmap fonts (kind "bitmap" in list_fonts, e.g. "Aseprite") have a fixed height:
     size and antialias do not change them.
     """

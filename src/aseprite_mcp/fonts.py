@@ -343,6 +343,10 @@ def render_text(
     text = normalize_newlines(text)
     if len(text) > MAX_CHARS:
         raise ToolError(f"The text has {len(text)} characters; the limit is {MAX_CHARS}")
+    if isinstance(font, SheetFont):
+        lacking = sorted({c for c in text if font.lacks(c)})
+        if lacking:
+            raise ToolError(f"This bitmap font has no glyph for: {''.join(lacking)}")
     if not 1 <= outline_width <= MAX_OUTLINE:
         raise ToolError(f"outline_width must be between 1 and {MAX_OUTLINE}")
     if max(abs(shadow_dx), abs(shadow_dy)) > MAX_SHADOW:
