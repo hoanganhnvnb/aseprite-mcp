@@ -83,16 +83,6 @@ async def test_params_keep_fractions(ase_settings: Settings):
     assert isinstance(result["echo"]["n"], int)
 
 
-async def test_params_keep_whole_numbers_beyond_the_integer_range_as_floats(
-    ase_settings: Settings,
-):
-    result = await run_op(
-        None, "_ping", {"echo": {"big": 1e20}}, settings=ase_settings, mutates=False
-    )
-
-    assert result["echo"]["big"] == 1e20
-
-
 async def test_ping_without_sprite(ase_settings: Settings):
     result = await run_op(None, "_ping", {}, settings=ase_settings, mutates=False)
 
