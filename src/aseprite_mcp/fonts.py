@@ -1,8 +1,9 @@
 """Font discovery and text rasterising with Pillow.
 
-Text is laid out by Pillow (FreeType). Limitations: colour glyphs (emoji fonts) are
-not supported; characters missing from the font show the font's own fallback glyph,
-usually an empty box; right-to-left and other complex scripts are shaped only when
+Text is laid out by Pillow (FreeType), or glyph by glyph for Aseprite's own pixel
+fonts (see sheet_fonts). Limitations: colour glyphs (emoji fonts) are not supported;
+characters missing from the font show the font's own fallback glyph, usually an
+empty box; right-to-left and other complex scripts are shaped only when
 Pillow has libraqm and letter_spacing is 0, since spaced text is placed one character
 at a time.
 """
@@ -20,6 +21,7 @@ from .colors import RGBA
 from .config import Settings
 from .errors import ToolError
 from .paths import resolve_path
+from .sheet_fonts import SheetFont, load_sheet, read_fonts_xml
 
 FONT_EXTENSIONS = frozenset({".ttf", ".otf", ".ttc", ".otc"})
 COLLECTIONS = frozenset({".ttc", ".otc"})
@@ -31,7 +33,7 @@ MAX_CHARS = 2000
 MAX_OUTLINE = 8
 MAX_SHADOW = 16
 
-Font = ImageFont.FreeTypeFont | ImageFont.ImageFont
+Font = ImageFont.FreeTypeFont | ImageFont.ImageFont | SheetFont
 
 
 @dataclass(frozen=True)
@@ -40,6 +42,8 @@ class FontEntry:
     style: str
     path: Path
     index: int = 0
+    # "truetype" for anything FreeType opens, "bitmap" for a spritesheet font.
+    kind: str = "truetype"
 
     @property
     def name(self) -> str:
@@ -130,13 +134,13 @@ def _font_files(dirs: Iterable[Path]) -> list[Path]:
     return files
 
 
-def _sorted(entries: Iterable[FontEntry]) -> list[FontEntry]:
+def sort_fonts(entries: Iterable[FontEntry]) -> list[FontEntry]:
     return sorted(entries, key=lambda e: (e.name.casefold(), str(e.path), e.index))
 
 
 def scan_fonts(dirs: Iterable[Path]) -> list[FontEntry]:
     """Every face in the font files below dirs; unreadable folders and files are skipped."""
-    return _sorted(face for f in _font_files(dirs) for face in _faces(f))
+    return sort_fonts(face for f in _font_files(dirs) for face in _faces(f))
 
 
 Stamp = tuple[tuple[Path, int, int], ...]
@@ -169,9 +173,27 @@ def installed_fonts(dirs: Sequence[Path]) -> list[FontEntry]:
     cached = _cache.get(key)
     if cached is not None and cached[0] == stamp:
         return cached[1]
-    entries = _sorted(face for f in files for face in _faces(f))
+    entries = sort_fonts(face for f in files for face in _faces(f))
     _cache[key] = (stamp, entries)
     return entries
+
+
+def bitmap_fonts(dirs: Iterable[Path]) -> list[FontEntry]:
+    """Spritesheet fonts listed in the fonts.xml of each folder; the first name wins.
+
+    A sheet that cannot be read is left out.
+    """
+    found: dict[str, FontEntry] = {}
+    for folder in dirs:
+        for name, path in read_fonts_xml(folder):
+            if name.casefold() in found:
+                continue
+            try:
+                load_sheet(path)
+            except (OSError, ValueError):
+                continue
+            found[name.casefold()] = FontEntry(name, "", path, kind="bitmap")
+    return list(found.values())
 
 
 def _looks_like_path(name: str) -> bool:
@@ -226,14 +248,22 @@ def find_font(
     names.update({e.family.casefold(): e.family for e in entries})
     close = difflib.get_close_matches(key, list(names), n=10, cutoff=0.6)
     hint = f" Close matches: {', '.join(names[c] for c in close)}." if close else ""
+    bitmap = [e.name for e in entries if e.kind == "bitmap"]
+    if bitmap:
+        hint += f" Pixel fonts: {', '.join(bitmap)}."
     raise ToolError(f"Font {name!r} not found.{hint} Call list_fonts to see the installed fonts.")
 
 
 def load_font(entry: FontEntry | None, size: int) -> Font:
-    """The font at `size` px (the pixel size FreeType renders at); None = Pillow's own font."""
+    """The font at `size` px (the pixel size FreeType renders at); None = Pillow's own font.
+
+    Bitmap fonts have one fixed size, so `size` does not change them.
+    """
     if not 1 <= size <= MAX_SIZE:
         raise ToolError(f"Font size must be between 1 and {MAX_SIZE}, got {size}")
     try:
+        if entry is not None and entry.kind == "bitmap":
+            return load_sheet(entry.path)
         if entry is None:
             return ImageFont.load_default(size)
         return ImageFont.truetype(str(entry.path), size, index=entry.index)
@@ -242,7 +272,9 @@ def load_font(entry: FontEntry | None, size: int) -> Font:
         raise ToolError(f"Cannot load {shown} at size {size}: {e}") from None
 
 
-def _line_height(font: Font) -> int:
+def line_height(font: Font) -> int:
+    if isinstance(font, SheetFont):
+        return font.height
     if isinstance(font, ImageFont.FreeTypeFont):
         ascent, descent = font.getmetrics()
         return ascent + descent
@@ -311,12 +343,16 @@ def render_text(
     text = normalize_newlines(text)
     if len(text) > MAX_CHARS:
         raise ToolError(f"The text has {len(text)} characters; the limit is {MAX_CHARS}")
+    if isinstance(font, SheetFont):
+        lacking = sorted({c for c in text if font.lacks(c)})
+        if lacking:
+            raise ToolError(f"This bitmap font has no glyph for: {''.join(lacking)}")
     if not 1 <= outline_width <= MAX_OUTLINE:
         raise ToolError(f"outline_width must be between 1 and {MAX_OUTLINE}")
     if max(abs(shadow_dx), abs(shadow_dy)) > MAX_SHADOW:
         raise ToolError(f"shadow offsets must be between -{MAX_SHADOW} and {MAX_SHADOW}")
     lines = text.split("\n")
-    line_h = _line_height(font)
+    line_h = line_height(font)
     pitch = line_h + line_spacing
     tops = [i * pitch for i in range(len(lines))]
     first = min(tops)
@@ -339,14 +375,21 @@ def render_text(
     draw = ImageDraw.Draw(mask)
     draw.fontmode = "L"
     anchor = "la" if isinstance(font, ImageFont.FreeTypeFont) else None
+
+    def put(xy: tuple[int, int], s: str) -> None:
+        if isinstance(font, SheetFont):
+            font.draw(mask, xy, s)
+        else:
+            draw.text(xy, s, font=font, fill=255, anchor=anchor)
+
     for line, top in zip(lines, tops):
         y = pad + top - first
         if letter_spacing == 0:
-            draw.text((pad, y), line, font=font, fill=255, anchor=anchor)
+            put((pad, y), line)
             continue
         x = float(pad)
         for char in line:
-            draw.text((round(x), y), char, font=font, fill=255, anchor=anchor)
+            put((round(x), y), char)
             x += font.getlength(char) + letter_spacing
     if bold:
         mask = ImageChops.lighter(mask, _shift(mask, 1, 0))

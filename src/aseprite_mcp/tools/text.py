@@ -1,12 +1,13 @@
 import os
 import sys
 from itertools import groupby
+from pathlib import Path
 from typing import Annotated, Any, Literal
 
 from PIL import Image
 from pydantic import Field
 
-from .. import fonts, raster, server
+from .. import fonts, raster, server, sheet_fonts
 from ..colors import RGBA, color_rgba
 from ..models import Color, Coord
 from ._registry import READ_ONLY, op_tool
@@ -25,11 +26,17 @@ FontName = Annotated[
     str | None,
     Field(
         description="Font name from list_fonts (family, 'Family Style' or file name, any "
-        "case) or an absolute path to a .ttf/.otf/.ttc file; empty = the built-in font"
+        "case) or an absolute path to a .ttf/.otf/.ttc file; empty = the built-in font. "
+        "'Aseprite' and 'Aseprite Mini' are Aseprite's own pixel fonts"
     ),
 ]
 Size = Annotated[
-    int, Field(ge=1, le=fonts.MAX_SIZE, description="Font size in pixels (FreeType pixel size)")
+    int,
+    Field(
+        ge=1,
+        le=fonts.MAX_SIZE,
+        description="Font size in pixels (FreeType pixel size); bitmap fonts ignore it",
+    ),
 ]
 Bold = Annotated[bool, Field(description="Thicken the glyphs by 1 px to the right")]
 LetterSpacing = Annotated[int, Field(ge=-8, le=32, description="Extra px between characters")]
@@ -54,11 +61,32 @@ Anchor = Literal[
 ]
 
 
+def available_fonts() -> tuple[list[Path], list[fonts.FontEntry]]:
+    """Searched folders and every usable font, Aseprite's pixel fonts included."""
+    dirs = fonts.font_dirs(sys.platform, os.environ)
+    sheets = sheet_fonts.sheet_dirs(dirs, server.get_settings().aseprite, sys.platform)
+    entries = fonts.installed_fonts(dirs) + fonts.bitmap_fonts(sheets)
+    return list(dict.fromkeys(dirs + sheets)), fonts.sort_fonts(entries)
+
+
 def pick_font(name: str | None, size: int) -> fonts.Font:
     if name is None or not name.strip():
         return fonts.load_font(None, size)
-    entries = fonts.installed_fonts(fonts.font_dirs(sys.platform, os.environ))
+    _, entries = available_fonts()
     return fonts.load_font(fonts.find_font(name, entries, server.get_settings()), size)
+
+
+def font_info(entry: fonts.FontEntry) -> dict[str, Any]:
+    info = {
+        "name": entry.name,
+        "family": entry.family,
+        "style": entry.style,
+        "path": str(entry.path),
+        "kind": entry.kind,
+    }
+    if entry.kind == "bitmap":
+        info["height"] = sheet_fonts.load_sheet(entry.path).height
+    return info
 
 
 def anchored(x: int, y: int, w: int, h: int, anchor: str) -> tuple[int, int]:
@@ -96,19 +124,17 @@ def list_fonts(
     """List installed fonts usable as draw_text's font, sorted by name.
 
     Searches the system font folders and ASEPRITE_MCP_FONT_DIRS (folders separated
-    like PATH). total counts every match, fonts holds the first `limit` of them.
+    like PATH). Aseprite's pixel fonts come from its data/fonts/fonts.xml, or from a
+    fonts.xml in one of those folders; they have kind "bitmap" and a fixed height.
+    total counts every match, fonts holds the first `limit` of them.
     """
-    dirs = fonts.font_dirs(sys.platform, os.environ)
-    entries = fonts.installed_fonts(dirs)
+    dirs, entries = available_fonts()
     if query:
         key = query.casefold()
         entries = [e for e in entries if key in e.name.casefold() or key in e.path.name.casefold()]
     return {
         "total": len(entries),
-        "fonts": [
-            {"name": e.name, "family": e.family, "style": e.style, "path": str(e.path)}
-            for e in entries[:limit]
-        ],
+        "fonts": [font_info(e) for e in entries[:limit]],
         "dirs": [str(d) for d in dirs],
         "default": "Leave font empty to use the font built into Pillow",
     }
@@ -132,10 +158,12 @@ def measure_text(
 
     outline_width 0 means no outline, shadow offsets 0, 0 no shadow. Antialiasing can
     change the size by a pixel, so this matches draw_text with antialias=false.
+    line_height is the font's own line pitch before line_spacing.
     """
+    picked = pick_font(font, size)
     image = fonts.render_text(
         text,
-        pick_font(font, size),
+        picked,
         (255, 255, 255, 255),
         bold=bold,
         outline=(0, 0, 0, 255) if outline_width else None,
@@ -150,6 +178,7 @@ def measure_text(
         "width": image.width,
         "height": image.height,
         "lines": fonts.normalize_newlines(text).count("\n") + 1,
+        "line_height": fonts.line_height(picked),
     }
 
 
@@ -198,7 +227,10 @@ def draw_text(
     colour (partly transparent edges become opaque there, so keep antialias off).
     Pixels off the canvas are skipped and counted in skipped_outside. Text is at most
     2000 characters and 2048x2048 px. Colour emoji are not supported; characters the
-    font lacks show its fallback glyph.
+    font lacks show its fallback glyph, except in a bitmap font whose fallback is
+    blank (Aseprite Mini), where such text is refused.
+    Bitmap fonts (kind "bitmap" in list_fonts, e.g. "Aseprite") have a fixed height:
+    size and antialias do not change them.
 
     Example: {"path": "hero.aseprite", "text": "HP 3", "x": 1, "y": 1, "color": "#ffffff",
     "size": 8, "shadow": "#000000"}

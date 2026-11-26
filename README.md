@@ -111,7 +111,7 @@ Everything is set through environment variables.
 | `ASEPRITE_MCP_MAX_READ_PIXELS` | `65536` | Most pixels `read_pixels` returns per call, up to 16777216 |
 | `ASEPRITE_MCP_MAX_SCAN_PIXELS` | `16777216` | Most pixels `check_animation` scans for overlaps, up to 2^30 |
 | `ASEPRITE_MCP_MAX_BATCH_OPS` | `1000` | Most ops one `batch` call accepts, up to 100000 |
-| `ASEPRITE_MCP_FONT_DIRS` | none | Extra font folders for `draw_text`, separated like `PATH` |
+| `ASEPRITE_MCP_FONT_DIRS` | none | Extra font folders for `draw_text`, separated like `PATH`; a folder with an Aseprite `fonts.xml` adds its pixel fonts |
 
 Flags accept `1`, `true`, `yes` or `on` and `0`, `false`, `no` or `off` (any case);
 an empty value means the default. Any other value, or a number outside its range,
