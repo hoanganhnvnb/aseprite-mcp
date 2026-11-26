@@ -142,6 +142,8 @@ async def export(
     overwrite is true. Files are written completely or not at all. One call writes
     at most 67108864 pixels, all frames and the scale counted. Not available in
     batch. Returns the files written, the frames, the image size and total bytes.
+
+    Example: {"path": "hero.aseprite", "output": "hero.gif", "scale": 4}
     """
     settings = server.get_settings()
     sprite = resolve_path(path, settings, must_exist=True)
