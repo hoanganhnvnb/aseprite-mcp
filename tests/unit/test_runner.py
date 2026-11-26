@@ -14,8 +14,8 @@ from aseprite_mcp.config import Settings
 from aseprite_mcp.errors import AsepriteError, ToolError
 from aseprite_mcp.runner import (
     _kill_tree,
-    _lock_key,
     _taskkill,
+    lock_key,
     replace_file,
     run_script,
     temp_sibling,
@@ -282,22 +282,121 @@ async def test_missing_output_keeps_the_sprite(settings: Settings, tmp_path: Pat
     assert target.read_text() == "old"
 
 
-async def test_output_created_meanwhile_is_not_replaced(settings: Settings, tmp_path: Path):
+async def test_existing_output_is_refused_before_running(settings: Settings, tmp_path: Path):
     final = tmp_path / "copy.png"
     tmp = temp_sibling(final)
     final.write_text("theirs")
+    log = tmp_path / "run.log"
 
     with pytest.raises(ToolError, match="already exists"):
         await run_script(
             SCRIPT,
-            {"fake": "ok", "write_files": [str(tmp)]},
+            {"fake": "ok", "write_files": [str(tmp)], "log": str(log)},
             settings=settings,
             writes=[(tmp, final)],
             keep_existing=[final],
         )
 
     assert final.read_text() == "theirs"
+    assert not log.exists()
+
+
+async def test_output_created_meanwhile_is_not_replaced(settings: Settings, tmp_path: Path):
+    final = tmp_path / "copy.png"
+    tmp = temp_sibling(final)
+    params = {"fake": "ok", "write_files": [str(tmp)], "create_meanwhile": str(final)}
+
+    with pytest.raises(ToolError, match="already exists"):
+        await run_script(
+            SCRIPT, params, settings=settings, writes=[(tmp, final)], keep_existing=[final]
+        )
+
+    assert final.read_text() == "theirs"
     assert sorted(p.name for p in tmp_path.iterdir()) == ["bin", "copy.png"]
+
+
+def _refuse_replacing(monkeypatch: pytest.MonkeyPatch, refused: Path) -> None:
+    real_replace = os.replace
+
+    def replace(src, dst):
+        if Path(dst) == refused:
+            raise PermissionError(13, "Permission denied", str(src))
+        real_replace(src, dst)
+
+    monkeypatch.setattr(os, "replace", replace)
+
+
+async def test_failed_output_replace_leaves_the_sprite_unsaved(
+    settings: Settings, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    target = tmp_path / "sprite.aseprite"
+    target.write_text("old")
+    output = tmp_path / "copy.png"
+    tmp = temp_sibling(output)
+    _refuse_replacing(monkeypatch, output)
+
+    with pytest.raises(ToolError) as caught:
+        await run_script(
+            SCRIPT,
+            {"fake": "ok", "write_save": "new", "write_files": [str(tmp)]},
+            settings=settings,
+            save_to=target,
+            writes=[(tmp, output)],
+        )
+
+    assert str(caught.value) == f"Could not write {output}: Permission denied"
+    assert target.read_text() == "old"
+    assert sorted(p.name for p in tmp_path.iterdir()) == ["bin", "sprite.aseprite"]
+
+
+async def test_failed_sprite_replace_says_the_outputs_were_written(
+    settings: Settings, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    target = tmp_path / "sprite.aseprite"
+    target.write_text("old")
+    output = tmp_path / "copy.png"
+    tmp = temp_sibling(output)
+    _refuse_replacing(monkeypatch, target)
+
+    with pytest.raises(ToolError) as caught:
+        await run_script(
+            SCRIPT,
+            {"fake": "ok", "write_save": "new", "write_files": [str(tmp)]},
+            settings=settings,
+            save_to=target,
+            writes=[(tmp, output)],
+        )
+
+    assert str(caught.value) == (
+        f"Could not write {target}: Permission denied; "
+        "the output files were written but the sprite was not saved"
+    )
+    assert target.read_text() == "old"
+    assert output.read_text() == "new"
+
+
+async def test_writing_a_file_waits_for_a_call_on_it_as_sprite(settings: Settings, tmp_path: Path):
+    target = tmp_path / "a.aseprite"
+    tmp = temp_sibling(target)
+    one, two = tmp_path / "one.log", tmp_path / "two.log"
+
+    await asyncio.gather(
+        run_script(
+            SCRIPT,
+            {"fake": "ok", "delay": 0.4, "log": str(one), "write_files": [str(tmp)]},
+            settings=settings,
+            writes=[(tmp, target)],
+        ),
+        run_script(
+            SCRIPT,
+            {"fake": "ok", "delay": 0.4, "log": str(two)},
+            settings=settings,
+            lock_paths=[target],
+        ),
+    )
+
+    first, second = sorted([_events(one), _events(two)], key=lambda e: e["start"])
+    assert first["end"] <= second["start"]
 
 
 async def test_two_calls_cannot_both_create_one_output(settings: Settings, tmp_path: Path):
@@ -340,6 +439,24 @@ async def test_read_only_output_is_refused(settings: Settings, tmp_path: Path):
     assert final.read_text() == "old"
 
 
+def test_failed_replace_without_a_reason_hides_the_temp_name(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    final = tmp_path / "copy.png"
+    tmp = temp_sibling(final)
+    tmp.write_text("new")
+
+    def refuse(src, dst):
+        raise OSError(f"cannot move {src}")
+
+    monkeypatch.setattr(os, "replace", refuse)
+
+    with pytest.raises(ToolError) as caught:
+        replace_file(tmp, final)
+
+    assert str(caught.value) == f"Could not write {final}: the file could not be replaced"
+
+
 def test_failed_replace_names_the_final_file(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     final = tmp_path / "copy.png"
     tmp = temp_sibling(final)
@@ -360,13 +477,13 @@ def test_failed_replace_names_the_final_file(tmp_path: Path, monkeypatch: pytest
 def test_lock_key_ignores_case_on_macos(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setattr(sys, "platform", "darwin")
 
-    assert _lock_key(tmp_path / "Hero.aseprite") == _lock_key(tmp_path / "hero.aseprite")
+    assert lock_key(tmp_path / "Hero.aseprite") == lock_key(tmp_path / "hero.aseprite")
 
 
 def test_lock_key_is_the_same_through_dot_dot(tmp_path: Path):
     (tmp_path / "x").mkdir()
 
-    assert _lock_key(tmp_path / "x" / ".." / "f.aseprite") == _lock_key(tmp_path / "f.aseprite")
+    assert lock_key(tmp_path / "x" / ".." / "f.aseprite") == lock_key(tmp_path / "f.aseprite")
 
 
 def test_lock_key_follows_symlinks(tmp_path: Path):
@@ -378,7 +495,7 @@ def test_lock_key_follows_symlinks(tmp_path: Path):
     except OSError:
         pytest.skip("symlinks not available")
 
-    assert _lock_key(link) == _lock_key(target)
+    assert lock_key(link) == lock_key(target)
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="process groups are POSIX only")

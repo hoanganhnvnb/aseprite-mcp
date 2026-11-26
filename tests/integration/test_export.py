@@ -1,4 +1,5 @@
 import dataclasses
+import errno
 import json
 import os
 import random
@@ -404,12 +405,12 @@ async def test_failed_export_removes_the_files_it_wrote(call, tmp_path, monkeypa
     def failing_replace(src, dst):
         moves.append(dst)
         if len(moves) == 2:
-            raise OSError("disk full")
+            raise OSError(errno.ENOSPC, "No space left on device")
         real_replace(src, dst)
 
     monkeypatch.setattr(os, "replace", failing_replace)
 
-    with pytest.raises(ToolError, match="disk full"):
+    with pytest.raises(ToolError, match="No space left on device"):
         await call("export", path="a.aseprite", output="w.png", frames="all")
 
     assert names(tmp_path) == ["a.aseprite"]
@@ -836,11 +837,11 @@ async def test_failed_export_layers_removes_the_folder_it_made(call, tmp_path, m
     await new_sprite(call)
 
     def failing_replace(src, dst):
-        raise OSError("disk full")
+        raise OSError(errno.ENOSPC, "No space left on device")
 
     monkeypatch.setattr(os, "replace", failing_replace)
 
-    with pytest.raises(ToolError, match="disk full"):
+    with pytest.raises(ToolError, match="No space left on device"):
         await call("export_layers", path="a.aseprite", output_dir="new/parts")
 
     assert names(tmp_path) == ["a.aseprite"]
@@ -851,11 +852,11 @@ async def test_failed_export_layers_keeps_an_existing_folder(call, tmp_path, mon
     (tmp_path / "parts").mkdir()
 
     def failing_replace(src, dst):
-        raise OSError("disk full")
+        raise OSError(errno.ENOSPC, "No space left on device")
 
     monkeypatch.setattr(os, "replace", failing_replace)
 
-    with pytest.raises(ToolError, match="disk full"):
+    with pytest.raises(ToolError, match="No space left on device"):
         await call("export_layers", path="a.aseprite", output_dir="parts")
 
     assert (tmp_path / "parts").is_dir()

@@ -1,4 +1,5 @@
 import inspect
+import sys
 import warnings
 from pathlib import Path
 from typing import Annotated, Any
@@ -410,3 +411,21 @@ async def test_direct_call_with_bad_arguments_gives_short_message():
     assert message.startswith("draw_rect: invalid arguments: rect.w: ")
     assert "Invalid color 'red'" in message
     assert "errors.pydantic.dev" not in message
+
+
+async def test_batch_catches_two_spellings_of_one_output_on_macos(
+    sandboxed: Path, monkeypatch: pytest.MonkeyPatch
+):
+    monkeypatch.setattr(sys, "platform", "darwin")
+
+    with pytest.raises(ToolError, match=r"op 1 \(save_copy\) and op 2 \(save_copy\) both write"):
+        await mcp.call_tool(
+            "batch",
+            {
+                "path": "s.aseprite",
+                "ops": [
+                    {"tool": "save_copy", "args": {"output": "Copy.png"}},
+                    {"tool": "save_copy", "args": {"output": "copy.png"}},
+                ],
+            },
+        )

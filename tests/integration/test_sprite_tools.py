@@ -1,3 +1,4 @@
+import asyncio
 import os
 import sys
 from pathlib import Path
@@ -181,6 +182,23 @@ async def test_save_copy_refuses_existing_output(call, tmp_path: Path):
         await call("save_copy", path="a.aseprite", output="copy.png")
 
     assert (tmp_path / "copy.png").read_bytes() == b"keep me"
+
+
+async def test_two_save_copies_cannot_both_create_one_file(call, tmp_path: Path):
+    await call("create_sprite", path="a.aseprite", width=8, height=8)
+    await call("create_sprite", path="b.aseprite", width=6, height=6)
+
+    results = await asyncio.gather(
+        call("save_copy", path="a.aseprite", output="copy.png"),
+        call("save_copy", path="b.aseprite", output="copy.png"),
+        return_exceptions=True,
+    )
+
+    failures = [r for r in results if isinstance(r, ToolError)]
+    assert len(failures) == 1
+    assert "already exists" in str(failures[0])
+    info = await call("get_sprite_info", path="copy.png")
+    assert info["width"] == (8 if failures[0] is results[1] else 6)
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="POSIX permission bits")

@@ -1,6 +1,5 @@
 import functools
 import inspect
-import os
 import warnings
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -14,6 +13,7 @@ from .. import server
 from ..errors import ToolError, describe_invalid
 from ..ops import Op, output_file, run_ops
 from ..paths import check_save_extension, resolve_path, same_file
+from ..runner import lock_key
 
 Builder = Callable[..., dict[str, Any]]
 # Turns the op's raw result into the tool result; gets the result and the op params.
@@ -184,7 +184,7 @@ async def run_batch(path: Path, entries: list[tuple[str, dict[str, Any]]]) -> li
     seen: dict[str, int] = {}
     for i, op in enumerate(built, 1):
         for _, final in op.writes:
-            key = os.path.normcase(final)
+            key = lock_key(final)
             if key in seen:
                 first = seen[key]
                 raise ToolError(
