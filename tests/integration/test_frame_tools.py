@@ -438,3 +438,18 @@ async def test_frame_tools_in_one_batch(call, monkeypatch: pytest.MonkeyPatch):
     info = await call("get_sprite_info", path="a.aseprite")
     assert [f["duration_ms"] for f in info["frames"]] == [80, 80, 80, 80]
     assert (info["tags"][0]["from_frame"], info["tags"][0]["to_frame"]) == (1, 4)
+
+
+@pytest.mark.parametrize("value", [True, 2.0])
+async def test_copy_frames_rejects_a_bool_or_float_target(call, value):
+    await new_sprite(call, frames=2)
+
+    with pytest.raises(ToolError, match="targets"):
+        await call("copy_frames", path="a.aseprite", source=1, targets=value)
+
+
+async def test_copy_frames_rejects_a_bool_source(call):
+    await new_sprite(call, frames=2)
+
+    with pytest.raises(ToolError, match="source"):
+        await call("copy_frames", path="a.aseprite", source=True, targets="2")
