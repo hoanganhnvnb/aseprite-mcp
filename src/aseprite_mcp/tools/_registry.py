@@ -28,7 +28,7 @@ READ_ONLY = ToolAnnotations(readOnlyHint=True)
 
 # Appended to tools that clients tend to call many times in a row; a batch of 50 small
 # draws takes about as long as one call, 50 separate calls take 30 times longer.
-BATCH_HINT = "Doing many of these in a row? Send them in one `batch` call; it is much faster than separate calls."
+BATCH_HINT = "Doing many of these in a row? Send them in one `batch` call on the same file; it is much faster than separate calls."
 
 # tool name -> (op name, mutates, builder)
 BATCHABLE: dict[str, tuple[str, bool, Builder]] = {}
