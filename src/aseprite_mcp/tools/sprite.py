@@ -64,7 +64,10 @@ async def create_sprite(
 
 @op_tool("sprite_info", mutates=False)
 def get_sprite_info() -> dict[str, Any]:
-    """Size, color mode, palette size, frames with durations, layer tree, tags and slice count."""
+    """Size, color mode, palette size, frames with durations, layer tree, tags and slice count.
+
+    A layer's path is ambiguous when its name contains '/' or is used more than once.
+    """
     return {}
 
 
