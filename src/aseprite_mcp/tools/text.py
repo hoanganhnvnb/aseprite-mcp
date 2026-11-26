@@ -127,7 +127,7 @@ def list_fonts(
     like PATH). Aseprite's pixel fonts come from its data/fonts/fonts.xml, or from a
     fonts.xml in one of those folders; they have kind "bitmap" and a fixed height.
     total counts every match, fonts holds the first `limit` of them. Pass a font's name
-    to draw_text: a file path goes through the sandbox and is refused outside the root.
+    to draw_text: with ASEPRITE_MCP_SANDBOX on, a file path outside the root is refused.
     """
     dirs, entries = available_fonts()
     if query:

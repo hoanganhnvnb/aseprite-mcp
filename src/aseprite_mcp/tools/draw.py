@@ -256,8 +256,8 @@ def draw_gradient(
     halves up; indexed sprites then get the nearest palette entry for each mix. A bayer
     dither uses only the stop colours: each pixel takes the next stop when its position
     in the segment (0..1) is above the matrix threshold at its canvas position.
-    'transparent' is black with alpha 0, so a gradient to it darkens as it fades; use
-    the stop's own colour with alpha 0 (e.g. '#ff000000') to fade only the alpha.
+    Without dither, 'transparent' is black with alpha 0, so a gradient to it darkens as
+    it fades; use the stop's own colour with alpha 0 (e.g. '#ff000000') to fade only the alpha.
     """
     return {
         **target(layer, frame, create_cel),
@@ -341,8 +341,7 @@ def draw_ascii(
     is and cannot be legend keys. Keys are single characters (any Unicode character).
     Rows may differ in length. outline paints every pixel next to (left, right, above,
     below) a non-transparent art pixel that is not part of the art itself. It overwrites
-    pixels there (unless blend is true) and ignores art pixels whose colour is
-    transparent. Pixels off the canvas are skipped and counted in skipped_outside;
+    pixels there unless blend is true, and ignores art pixels whose colour is transparent. Pixels off the canvas are skipped and counted in skipped_outside;
     painted counts art and outline pixels.
 
     Example: {"path": "hero.aseprite", "x": 4, "y": 2, "rows": [".aa.", "abba", ".aa."],
@@ -393,7 +392,7 @@ def draw_isometric_box(
     covers columns x - 2*d .. x + 2*w - 1 and rows y .. y + w + d + h - 1. A pixel
     belongs to the face that contains its centre, so faces never overlap and leave no
     gaps. outline paints the pixels just outside the box (left, right, above, below).
-    w = d = 1 gives only a 2x2 top face; use 2 or more for a diamond-shaped top.
+    w = d = 1 gives only a 2x2 top face; use w and d of 2 or more for a diamond-shaped top.
     Pixels off the canvas are skipped and counted; painted includes the outline.
     """
     faces = raster.isometric_box(x, y, w, d, h)

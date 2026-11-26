@@ -185,11 +185,10 @@ def oscillate_cels(
     """Swing a layer's cels along a sine wave across the frames (a bob or sway loop).
 
     Frame i of n is placed at base + amplitude * sin(2π(cycles * i/n + phase)), rounded,
-    so the last frame leads back into the first. The base is chosen so the first frame
+    so the last frame leads back into the first only when cycles is a whole number. The base is chosen so the first frame
     keeps its current position: running the tool again with the same arguments gives
     the same result. An axis with amplitude 0 is left as it is. Every frame needs a cel.
-    The last frame leads back into the first only when cycles is a whole number. The
-    result lists the first 64 frames only. The layer must not be locked.
+    The result lists the first 64 frames only. The layer must not be locked.
     """
     _at_least_two(frames, "oscillate_cels")
     if amplitude_x == 0 and amplitude_y == 0:
