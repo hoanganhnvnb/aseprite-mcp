@@ -223,8 +223,8 @@ def find_font(
 ) -> FontEntry:
     """Find a font by name, case-insensitively, or load it from an absolute or ~ path.
 
-    A name matches the full name ("Family Style"), then the file name without its
-    extension, then the family (preferring its regular style). Paths go through the
+    A name matches the full name ("Family Style"), then the file name with or without
+    its extension, then the family (preferring its regular style). Paths go through the
     usual path rules, so the sandbox applies.
     """
     name = name.strip()
@@ -234,6 +234,7 @@ def find_font(
     for match in (
         lambda e: e.name.casefold() == key,
         lambda e: e.path.stem.casefold() == key,
+        lambda e: e.path.name.casefold() == key,
         lambda e: e.family.casefold() == key,
     ):
         hits = [e for e in entries if match(e)]

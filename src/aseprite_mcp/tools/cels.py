@@ -1,6 +1,6 @@
 from typing import Annotated, Any, Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, StrictInt
 
 from ..ranges import FrameSpec
 from ._registry import op_tool
@@ -122,7 +122,7 @@ def tween_cels(
         Field(description="How the value moves from start to end"),
     ] = "linear",
     source_frame: Annotated[
-        int | None,
+        StrictInt | None,
         Field(ge=1, description="scale only: frame whose cel is scaled; default first frame"),
     ] = None,
     anchor: Annotated[

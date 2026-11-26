@@ -1,6 +1,6 @@
 from typing import Annotated, Any, Literal
 
-from pydantic import Field
+from pydantic import Field, StrictInt
 
 from ..ranges import FrameSpec, parse_frames
 from ._registry import op_tool
@@ -8,7 +8,7 @@ from ._registry import op_tool
 MAX_NEW_FRAMES = 512
 
 DurationMs = Annotated[int, Field(ge=1, le=65535, description="Frame duration in milliseconds")]
-FrameNumber = Annotated[int, Field(ge=1, description="1-based frame number")]
+FrameNumber = Annotated[StrictInt, Field(ge=1, description="1-based frame number")]
 TagName = Annotated[str, Field(min_length=1, description="Tag name, matched exactly")]
 
 
@@ -52,7 +52,7 @@ def set_frame_duration(duration_ms: DurationMs, frames: FrameSpec = "all") -> di
     return {"frames": frames, "duration_ms": duration_ms}
 
 
-def _targets(targets: str | int) -> dict[str, Any]:
+def _targets(targets: str | StrictInt) -> dict[str, Any]:
     if isinstance(targets, str) and targets.strip().lower().startswith("append:"):
         count = targets.split(":", 1)[1].strip()
         if not count.isdigit() or not 1 <= int(count) <= MAX_NEW_FRAMES:
@@ -65,7 +65,7 @@ def _targets(targets: str | int) -> dict[str, Any]:
 def copy_frames(
     source: FrameNumber,
     targets: Annotated[
-        str | int,
+        str | StrictInt,
         Field(
             description='Frames to copy into ("2", "3-6", "all"), or "append:N" to add N '
             "empty frames at the end and copy into those"

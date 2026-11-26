@@ -356,8 +356,8 @@ OPS.render_frames = function(ctx, p)
     end
   end
   if count * area.width * area.height > p.max_pixels then
-    fail(string.format("rendering %d frames of %dx%d px is too much for one view; "
-      .. "pass a region or fewer frames", count, area.width, area.height))
+    fail(string.format("rendering %s of %dx%d px is too much for one view; "
+      .. "pass a region or fewer frames", plural(count, "frame"), area.width, area.height))
   end
   local buffer = rgb_image(area.width, area.height)
   for n = 1, #spr.frames do
