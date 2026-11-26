@@ -750,12 +750,12 @@ async def test_blend_on_indexed_sprite_snaps_to_the_nearest_palette_entry(
         "draw_rect",
         path="a.aseprite",
         rect={"x": 0, "y": 0, "w": 1, "h": 1},
-        color="#ffffffc0",
+        color="#ffffff40",
         fill=True,
         blend=True,
     )
 
-    assert await pixels(path, read=[(0, 0)], values=True) == [2]
+    assert await pixels(path, read=[(0, 0)], values=True) == [1]
 
 
 async def test_faint_blend_on_an_empty_indexed_pixel_paints_a_solid_entry(
@@ -764,7 +764,6 @@ async def test_faint_blend_on_an_empty_indexed_pixel_paints_a_solid_entry(
     path = tmp_path / "a.aseprite"
     await new_sprite(call, color_mode="indexed")
     await set_palette(path, [(0, 0, 0, 0), (0, 0, 0, 255), (255, 255, 255, 255)])
-    await call("draw_pixels", path="a.aseprite", pixels=[px(0, 0, "#000000")])
 
     await call(
         "draw_rect",
