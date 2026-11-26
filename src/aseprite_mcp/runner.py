@@ -52,7 +52,9 @@ def _state() -> _LoopState:
 
 
 def _lock_key(path: Path) -> str:
-    return os.path.normcase(str(path.resolve()))
+    key = os.path.normcase(str(path.resolve()))
+    # macOS file systems are case-insensitive by default; normcase leaves case there.
+    return key.casefold() if sys.platform == "darwin" else key
 
 
 def _tail(text: str) -> str:
@@ -77,7 +79,11 @@ def replace_file(tmp: Path, final: Path) -> None:
             os.chmod(tmp, stat.S_IMODE(final.stat().st_mode))
         except OSError:
             pass
-    os.replace(tmp, final)
+    try:
+        os.replace(tmp, final)
+    except OSError as e:
+        tmp.unlink(missing_ok=True)
+        raise ToolError(f"Could not write {final}: {e.strerror or e}") from None
 
 
 def remove_temp_files(tmp: Path) -> None:
@@ -105,18 +111,22 @@ def _taskkill() -> str:
 
 async def _kill_tree(proc: asyncio.subprocess.Process) -> None:
     if sys.platform == "win32":
-        killer = await asyncio.create_subprocess_exec(
-            _taskkill(),
-            "/F",
-            "/T",
-            "/PID",
-            str(proc.pid),
-            stdin=subprocess.DEVNULL,
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-            creationflags=subprocess.CREATE_NO_WINDOW,
-        )
-        await killer.wait()
+        try:
+            killer = await asyncio.create_subprocess_exec(
+                _taskkill(),
+                "/F",
+                "/T",
+                "/PID",
+                str(proc.pid),
+                stdin=subprocess.DEVNULL,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                creationflags=subprocess.CREATE_NO_WINDOW,
+            )
+            await killer.wait()
+        except OSError:
+            # Without taskkill only the child itself is killed below.
+            pass
     else:
         try:
             os.killpg(proc.pid, signal.SIGKILL)
@@ -255,6 +265,8 @@ async def _run_locked(
             if code != 0:
                 raise AsepriteError(f"Aseprite exited with code {code}: {detail}")
             raise AsepriteError(f"Aseprite finished without writing a result: {detail}")
+        # The script writes ok:true only after every op and the save are done, so a
+        # non-zero exit after that (Aseprite failing on shutdown) does not undo the run.
         if not data.get("ok", False):
             raise AsepriteError(
                 str(data.get("error") or _tail(stderr) or "Aseprite reported failure")

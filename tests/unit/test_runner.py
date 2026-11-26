@@ -2,6 +2,7 @@ import asyncio
 import os
 import signal
 import stat
+import subprocess
 import sys
 import time
 from dataclasses import replace
@@ -11,7 +12,14 @@ import pytest
 
 from aseprite_mcp.config import Settings
 from aseprite_mcp.errors import AsepriteError, ToolError
-from aseprite_mcp.runner import _lock_key, _taskkill, run_script, temp_sibling
+from aseprite_mcp.runner import (
+    _kill_tree,
+    _lock_key,
+    _taskkill,
+    replace_file,
+    run_script,
+    temp_sibling,
+)
 from helpers import make_settings
 
 FAKE = Path(__file__).parent.parent / "fake_aseprite.py"
@@ -332,6 +340,29 @@ async def test_read_only_output_is_refused(settings: Settings, tmp_path: Path):
     assert final.read_text() == "old"
 
 
+def test_failed_replace_names_the_final_file(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    final = tmp_path / "copy.png"
+    tmp = temp_sibling(final)
+    tmp.write_text("new")
+
+    def refuse(src, dst):
+        raise PermissionError(13, "Permission denied", str(src))
+
+    monkeypatch.setattr(os, "replace", refuse)
+
+    with pytest.raises(ToolError) as caught:
+        replace_file(tmp, final)
+
+    assert str(caught.value) == f"Could not write {final}: Permission denied"
+    assert not tmp.exists()
+
+
+def test_lock_key_ignores_case_on_macos(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.setattr(sys, "platform", "darwin")
+
+    assert _lock_key(tmp_path / "Hero.aseprite") == _lock_key(tmp_path / "hero.aseprite")
+
+
 def test_lock_key_is_the_same_through_dot_dot(tmp_path: Path):
     (tmp_path / "x").mkdir()
 
@@ -381,3 +412,33 @@ def test_taskkill_falls_back_to_the_bare_name(tmp_path: Path, monkeypatch: pytes
     monkeypatch.setenv("SystemRoot", str(tmp_path))
 
     assert _taskkill() == "taskkill"
+
+
+class _Proc:
+    pid = 4321
+
+    def __init__(self) -> None:
+        self.calls: list[str] = []
+
+    def kill(self) -> None:
+        self.calls.append("kill")
+
+    async def wait(self) -> int:
+        self.calls.append("wait")
+        return -9
+
+
+async def test_kill_falls_back_to_the_child_when_taskkill_cannot_start(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    async def no_taskkill(*args, **kwargs):
+        raise FileNotFoundError(2, "No such file or directory")
+
+    monkeypatch.setattr(sys, "platform", "win32")
+    monkeypatch.setattr(subprocess, "CREATE_NO_WINDOW", 0x08000000, raising=False)
+    monkeypatch.setattr(asyncio, "create_subprocess_exec", no_taskkill)
+    proc = _Proc()
+
+    await _kill_tree(proc)  # type: ignore[arg-type]
+
+    assert proc.calls == ["kill", "wait"]
