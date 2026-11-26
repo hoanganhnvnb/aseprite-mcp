@@ -66,7 +66,7 @@ def get_tilemap_info(
     }
 
 
-@op_tool("draw_tile", mutates=True)
+@op_tool("draw_tile", mutates=True, batch_hint=True)
 def draw_tile(
     layer: TilemapLayer,
     tile_index: Annotated[
@@ -95,7 +95,7 @@ def draw_tile(
     }
 
 
-@op_tool("set_tiles", mutates=True)
+@op_tool("set_tiles", mutates=True, batch_hint=True)
 def set_tiles(
     layer: TilemapLayer,
     frame: Annotated[int, Field(ge=1, description="1-based frame number")],

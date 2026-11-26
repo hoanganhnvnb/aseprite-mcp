@@ -1,6 +1,21 @@
+import json
 from pathlib import Path
 
 from aseprite_mcp.config import Settings
+
+# Tools whose description holds a runnable 'Example:' paragraph.
+DOC_EXAMPLE_TOOLS = [
+    "draw_pixels",
+    "draw_rect",
+    "draw_ascii",
+    "draw_text",
+    "batch",
+    "copy_frames",
+    "export",
+    "read_pixels",
+    "view_sprite",
+    "set_palette",
+]
 
 
 def rect(x: int, y: int, w: int, h: int) -> dict:
@@ -30,3 +45,9 @@ def make_settings(root: Path, sandbox: bool = False, aseprite: str | None = None
         allow_lua=False,
         max_read_pixels=65536,
     )
+
+
+def doc_example(description: str) -> dict:
+    """The arguments of the 'Example:' paragraph in a tool description."""
+    paragraph = description.split("Example:", 1)[1].split("\n\n", 1)[0]
+    return json.loads(paragraph)

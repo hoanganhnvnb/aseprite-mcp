@@ -101,6 +101,8 @@ def read_pixels(
     are read, even when it is hidden, without its opacity. Indexed and grayscale
     sprites give their RGBA colours. At most ASEPRITE_MCP_MAX_READ_PIXELS pixels
     (default 65536) per call; use view_sprite to look at larger areas.
+
+    Example: {"path": "hero.aseprite", "rect": {"x": 0, "y": 0, "w": 16, "h": 16}}
     """
     limit = server.get_settings().max_read_pixels
     count = rect.w * rect.h
@@ -277,6 +279,8 @@ async def view_sprite(
     that layer's own pixels are shown. onion_skin shows each frame's previous frames
     beneath it, the nearest at 50% opacity and each older one at half the one after.
     Nothing is saved. Not available in batch.
+
+    Example: {"path": "hero.aseprite", "frames": "all", "scale": 4, "grid": true}
     """
     settings = server.get_settings()
     target = resolve_path(path, settings, must_exist=True)

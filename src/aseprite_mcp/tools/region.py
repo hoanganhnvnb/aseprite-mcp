@@ -15,7 +15,7 @@ WholeSprite = Annotated[
 ]
 
 
-@op_tool("move_region", mutates=True)
+@op_tool("move_region", mutates=True, batch_hint=True)
 def move_region(
     layer: LayerRef,
     rect: Annotated[Rect, Field(description="Canvas rectangle to move")],
@@ -64,7 +64,7 @@ def move_region(
     }
 
 
-@op_tool("erase_region", mutates=True)
+@op_tool("erase_region", mutates=True, batch_hint=True)
 def erase_region(
     layer: LayerRef,
     rect: Annotated[Rect, Field(description="Canvas rectangle to clear")],
