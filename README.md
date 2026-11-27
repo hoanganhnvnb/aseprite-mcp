@@ -30,8 +30,9 @@ You need Python 3.12+ and your own copy of Aseprite 1.3 or newer.
 uvx --from git+https://github.com/hoanganhnvnb/aseprite-mcp aseprite-mcp --check
 ```
 
-or `pipx install git+https://github.com/hoanganhnvnb/aseprite-mcp`. `--check` finds Aseprite
-and runs a tiny script in it; set `ASEPRITE_PATH` if it cannot.
+or `pipx install git+https://github.com/hoanganhnvnb/aseprite-mcp` (Python 3.12 or newer; `uvx`
+fetches one for you). `--check` finds Aseprite and runs a tiny script in it; set
+`ASEPRITE_PATH` if it cannot.
 
 **2. Add it to your MCP client.**
 

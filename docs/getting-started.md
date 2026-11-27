@@ -17,7 +17,7 @@ a separate install step; `pipx` and `pip` install the `aseprite-mcp` command.
 uvx --from git+https://github.com/hoanganhnvnb/aseprite-mcp aseprite-mcp --check
 
 # pipx: install the command
-pipx install git+https://github.com/hoanganhnvnb/aseprite-mcp
+pipx install git+https://github.com/hoanganhnvnb/aseprite-mcp  # needs Python 3.12+
 
 # pip: into a virtual environment
 python -m venv .venv
